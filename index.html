@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ember Counterflow · Firebrand against the wind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0c10;
+    --panel: rgba(12, 16, 24, 0.92);
+    --line: rgba(251, 146, 60, 0.28);
+    --ink: #f1e8df;
+    --muted: #9a8f84;
+    --accent: #fb923c;
+    --cool: #38bdf8;
+    --hot: #f97316;
+    --fire: #ef4444;
+    --ok: #4ade80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; background: var(--bg); color: var(--ink);
+    font-family: "DM Sans", system-ui, sans-serif; overflow: hidden;
+  }
+  #wrap {
+    display: grid;
+    grid-template-columns: 1fr min(340px, 38vw);
+    height: 100%;
+  }
+  @media (max-width: 900px) {
+    #wrap { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    aside { max-height: 42vh; overflow: auto; }
+  }
+  .stage {
+    position: relative;
+    background: radial-gradient(ellipse at 30% 20%, #1a1520 0%, #0a0c10 55%);
+    min-height: 0;
+  }
+  canvas#c {
+    display: block; width: 100%; height: 100%;
+    cursor: crosshair;
+  }
+  .hud {
+    position: absolute; left: 16px; top: 16px; right: 16px;
+    pointer-events: none; max-width: 52ch;
+  }
+  .badge {
+    display: inline-block;
+    font: 700 0.62rem/1 "JetBrains Mono", monospace;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #1a0a00; background: linear-gradient(90deg, #fb923c, #fbbf24);
+    border-radius: 999px; padding: 4px 10px; margin-bottom: 8px;
+  }
+  .hud h1 {
+    font: 700 1.45rem/1.15 "Space Grotesk", system-ui, sans-serif;
+    letter-spacing: -0.02em; text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  }
+  .hud p {
+    margin-top: 6px; font-size: 0.82rem; color: #c4b5a5; line-height: 1.45;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+  }
+  .legend {
+    position: absolute; left: 16px; bottom: 16px;
+    display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
+  }
+  .legend span {
+    font: 600 0.65rem "JetBrains Mono", monospace;
+    padding: 4px 8px; border-radius: 8px;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.08);
+  }
+  .build {
+    position: absolute; right: 16px; bottom: 16px;
+    font: 600 0.6rem "JetBrains Mono", monospace; color: #5c534a;
+  }
+  aside {
+    background: var(--panel); border-left: 1px solid var(--line);
+    padding: 14px 14px 20px; overflow: auto;
+  }
+  aside h2 {
+    font: 700 0.68rem/1 "JetBrains Mono", monospace;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin: 14px 0 8px;
+  }
+  aside h2:first-child { margin-top: 0; }
+  .row {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px;
+    align-items: center; font-size: 0.78rem; color: #d4c4b0; margin-bottom: 8px;
+  }
+  .row.full { grid-template-columns: 1fr; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .val {
+    font: 600 0.72rem "JetBrains Mono", monospace; color: #fdba74; min-width: 3.4rem; text-align: right;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .chips button, .btn {
+    border: 1px solid var(--line); background: rgba(30, 20, 12, 0.9); color: #e7d5c0;
+    border-radius: 999px; padding: 7px 11px; font-size: 0.72rem; cursor: pointer;
+    font-family: inherit;
+  }
+  .chips button.on { border-color: var(--accent); color: #ffedd5; background: rgba(154, 52, 18, 0.35); }
+  .btn.primary {
+    width: 100%; margin-top: 6px; background: linear-gradient(160deg, #ea580c, #9a3412);
+    border-color: #fb923c; font-weight: 700;
+  }
+  .meta {
+    font: 500 0.68rem/1.5 "JetBrains Mono", monospace; color: #a89a8c;
+    background: rgba(0,0,0,0.35); border-radius: 10px; padding: 8px 10px; margin-top: 8px;
+  }
+  .meta b { color: #ffedd5; }
+  .meta .hot { color: #fb923c; }
+  .meta .ok { color: #4ade80; }
+  .meta .cool { color: #38bdf8; }
+  .help {
+    font-size: 0.72rem; line-height: 1.5; color: #b5a698;
+    padding: 8px 10px; border-radius: 10px;
+    border: 1px solid rgba(251,146,60,0.15); background: rgba(20,12,8,0.6); margin-top: 8px;
+  }
+  .help b { color: #fed7aa; }
+  label.check {
+    display: flex; align-items: center; gap: 8px; font-size: 0.78rem;
+    color: #d4c4b0; margin-bottom: 6px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="stage">
+    <canvas id="c"></canvas>
+    <div class="hud">
+      <div class="badge">Wildfire · fire–atmosphere coupling</div>
+      <h1>Ember Counterflow</h1>
+      <p>
+        Ambient wind pushes left → right, yet a hot ember can still land
+        <b style="color:#fb923c">upwind</b> and ignite fuel. The fire makes its own wind:
+        the rising plume must entrain air, and that <b style="color:#38bdf8">in-draft</b>
+        can reverse the ground flow.
+      </p>
+    </div>
+    <div class="legend">
+      <span style="color:#fb923c">● main fire</span>
+      <span style="color:#fbbf24">● lofted ember</span>
+      <span style="color:#4ade80">● upwind ignition</span>
+      <span style="color:#38bdf8">→ reverse ground flow</span>
+      <span style="color:#a78bfa">⋯ ambient wind</span>
+    </div>
+    <div class="build" id="build">v1.0.0</div>
+  </div>
+
+  <aside>
+    <h2>Wind & fire</h2>
+    <label class="row full">Ambient wind U<sub>w</sub> (m/s)
+      <input id="wind" type="range" min="0" max="12" step="0.1" value="3.5" />
+    </label>
+    <div class="row"><span>Wind (left → right)</span><span class="val" id="windVal">3.5</span></div>
+
+    <label class="row full">Fire intensity Q*
+      <input id="Q" type="range" min="0.2" max="4" step="0.05" value="1.8" />
+    </label>
+    <div class="row"><span>Heat / buoyancy</span><span class="val" id="QVal">1.80</span></div>
+
+    <label class="row full">Entrainment strength E
+      <input id="entrain" type="range" min="0.2" max="3" step="0.05" value="1.35" />
+    </label>
+    <div class="row"><span>In-draft / reverse pocket</span><span class="val" id="entrainVal">1.35</span></div>
+
+    <label class="row full">Plume tilt from wind
+      <input id="tilt" type="range" min="0" max="2" step="0.05" value="0.85" />
+    </label>
+    <div class="row"><span>Tilt factor</span><span class="val" id="tiltVal">0.85</span></div>
+
+    <h2>Embers (firebrands)</h2>
+    <label class="row full">Ember diameter (mm)
+      <input id="diam" type="range" min="1" max="20" step="0.5" value="6" />
+    </label>
+    <div class="row"><span>Size (affects loft & drag)</span><span class="val" id="diamVal">6.0</span></div>
+
+    <label class="row full">Emit rate
+      <input id="rate" type="range" min="0" max="40" step="1" value="12" />
+    </label>
+    <div class="row"><span>Embers / second</span><span class="val" id="rateVal">12</span></div>
+
+    <label class="row full">Burn lifetime (s)
+      <input id="life" type="range" min="1" max="20" step="0.5" value="8" />
+    </label>
+    <div class="row"><span>Still glowing when landing?</span><span class="val" id="lifeVal">8.0</span></div>
+
+    <h2>Fuel / ignition</h2>
+    <label class="row full">Fuel moisture / threshold
+      <input id="moisture" type="range" min="0.15" max="2" step="0.05" value="0.55" />
+    </label>
+    <div class="row"><span>Higher = harder to ignite</span><span class="val" id="moistureVal">0.55</span></div>
+
+    <h2>Display</h2>
+    <label class="check"><input type="checkbox" id="showField" checked /> velocity arrows</label>
+    <label class="check"><input type="checkbox" id="showReverse" checked /> reverse-flow region</label>
+    <label class="check"><input type="checkbox" id="showTrails" checked /> ember trails</label>
+    <label class="check"><input type="checkbox" id="pause" /> pause</label>
+
+    <div class="chips" id="presets">
+      <button type="button" data-p="calm">Calm day</button>
+      <button type="button" data-p="classic" class="on">Classic reverse</button>
+      <button type="button" data-p="fierce">Fierce fire</button>
+      <button type="button" data-p="gale">Strong wind</button>
+    </div>
+    <button type="button" class="btn primary" id="btnReset">Reset scene</button>
+
+    <div class="meta" id="meta">…</div>
+    <div class="help">
+      <b>Why against the wind?</b> A hot fire is a chimney. Rising air must be replaced:
+      near the ground, air is drawn <b>toward the flame from all sides</b>. Downwind of the fire,
+      that in-draft can be stronger than the ambient wind → a <b>reverse-flow pocket</b>
+      (cyan). Embers lofted in the plume can fall into that pocket and be carried
+      <b>upwind</b>, landing on unburned fuel. Full wildfire models (e.g. FIRETEC-class)
+      solve this with coupled CFD; here we use a reduced plume + entrainment field so you
+      can feel the mechanism with sliders.
+    </div>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const BUILD = "v1.0.0";
+  document.getElementById("build").textContent = BUILD;
+
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+
+  // World: x in meters left→right, y in meters up. Fire near origin.
+  const W = {
+    xmin: -40, xmax: 55, ymin: 0, ymax: 38,
+  };
+
+  const params = {
+    wind: 3.5,       // m/s ambient +x
+    Q: 1.8,          // nondim heat
+    entrain: 1.35,   // entrainment strength
+    tilt: 0.85,      // plume tilt by wind
+    diam: 6,         // mm
+    rate: 12,        // embers/s
+    life: 8,         // s glowing
+    moisture: 0.55,  // ignition threshold
+    showField: true,
+    showReverse: true,
+    showTrails: true,
+    pause: false,
+  };
+
+  // Fuel patches: strips of unburned fuel (ignition energy accumulator)
+  // Upwind fuel is left of fire — ignition here = counter-wind spotting success
+  let fuels = [];
+  let embers = [];
+  let sparks = []; // visual only
+  let fireX = 0;
+  let t = 0;
+  let emitAcc = 0;
+  let stats = { reverseLand: 0, upwindIgnite: 0, totalLand: 0, lofted: 0 };
+
+  function resetFuels() {
+    fuels = [];
+    // Upwind fuel beds (left of fire) — the dramatic targets
+    for (let i = 0; i < 5; i++) {
+      fuels.push({
+        x: -8 - i * 5.5, y: 0, w: 4.2, h: 1.2,
+        energy: 0, ignited: false, upwind: true, label: i === 0 ? "upwind fuel" : null,
+      });
+    }
+    // Downwind fuel
+    for (let i = 0; i < 4; i++) {
+      fuels.push({
+        x: 8 + i * 7, y: 0, w: 5, h: 1.2,
+        energy: 0, ignited: false, upwind: false, label: i === 0 ? "downwind fuel" : null,
+      });
+    }
+    // Tree-like vertical fuel upwind
+    fuels.push({
+      x: -18, y: 0, w: 1.8, h: 8, energy: 0, ignited: false, upwind: true, label: "tree",
+    });
+  }
+
+  function resetAll() {
+    embers = [];
+    sparks = [];
+    t = 0;
+    emitAcc = 0;
+    stats = { reverseLand: 0, upwindIgnite: 0, totalLand: 0, lofted: 0 };
+    resetFuels();
+  }
+  resetAll();
+
+  // ----- Velocity field: ambient + plume + entrainment -----
+  // Pedagogical reduced model of fire-induced winds (not full LES).
+  function velocity(x, y) {
+    const U = params.wind;
+    const Q = params.Q;
+    const E = params.entrain;
+    const tilt = params.tilt;
+
+    // Plume centerline tilts downwind with height
+    // w_plume scale ~ Q^{1/3}, tilt ~ U * y / w
+    const w0 = 2.2 + 4.5 * Math.pow(Math.max(Q, 0.1), 0.45);
+    const xc = fireX + tilt * (U / Math.max(w0, 0.5)) * y * 0.55;
+
+    const dx = x - xc;
+    const r2 = dx * dx + 0.01;
+    const r = Math.sqrt(r2);
+    // Gaussian plume width grows slowly with height
+    const sigma = 1.2 + 0.18 * y;
+    const g = Math.exp(-0.5 * (dx / sigma) ** 2);
+
+    // Vertical velocity in plume (buoyancy)
+    const wPlume = w0 * g * Math.exp(-y / (12 + 6 * Q));
+
+    // Entrainment / in-draft: horizontal sink toward fire base + lower plume
+    // Stronger near ground. On downwind side this opposes ambient U.
+    const dx0 = x - fireX;
+    const r0 = Math.sqrt(dx0 * dx0 + (y + 1.5) ** 2);
+    const sink = E * Q * 2.8 / (r0 * r0 + 2.5);
+    // Height decay of horizontal in-draft
+    const hFac = Math.exp(-y / (3.5 + Q));
+    let uIn = -sink * dx0 * hFac; // toward fire
+    let vIn = -sink * (y + 0.2) * hFac * 0.35;
+
+    // Mild recirculation cell downwind near ground (lee of tilted plume)
+    // Counter-rotating eddy: helps fling embers back toward/upwind of fire
+    const leeX = fireX + 4 + 1.2 * U;
+    const dxL = x - leeX;
+    const dyL = y - 2.2;
+    const rL2 = dxL * dxL + dyL * dyL + 1.5;
+    const vortex = E * Q * 1.1 * Math.exp(-rL2 / (18 + 2 * U));
+    // Clockwise or counterclockwise: u ~ -(y-yc), v ~ (x-xc) scaled
+    uIn += vortex * (-dyL) * 0.9;
+    vIn += vortex * dxL * 0.55;
+
+    const u = U + uIn + 0.15 * wPlume * (dx / (sigma + 0.5)); // plume lateral
+    const v = wPlume + vIn;
+    return { u, v, wPlume, xc };
+  }
+
+  /** Ground-level reverse flow: u < 0 while ambient wind > 0 */
+  function isReverse(x, y) {
+    if (y > 4.5) return false;
+    const { u } = velocity(x, y);
+    return params.wind > 0.3 && u < -0.15;
+  }
+
+  // Ember particle
+  function spawnEmber() {
+    const d_mm = params.diam;
+    const d = d_mm * 1e-3; // m
+    const rho = 280; // kg/m3 char-ish
+    const m = rho * (Math.PI / 6) * d * d * d;
+    const A = Math.PI * (d * d) / 4;
+    // Launch from upper flame with some scatter
+    const ang = (Math.random() - 0.5) * 0.8;
+    const speed = 1.5 + Math.random() * 2.5 * params.Q;
+    embers.push({
+      x: fireX + (Math.random() - 0.4) * 1.5,
+      y: 1.2 + Math.random() * 2.5 * params.Q,
+      vx: Math.sin(ang) * speed * 0.4 + params.wind * 0.1,
+      vy: Math.cos(ang) * speed * 0.5 + 1.5 * params.Q,
+      m, A, d,
+      life: params.life * (0.7 + Math.random() * 0.5),
+      age: 0,
+      trail: [],
+      glowing: true,
+      landed: false,
+    });
+    stats.lofted++;
+  }
+
+  function stepEmbers(dt) {
+    const rhoAir = 1.15;
+    const Cd = 0.9;
+    const g = 9.81;
+    const next = [];
+    for (const e of embers) {
+      if (e.landed) continue;
+      e.age += dt;
+      e.life -= dt;
+      e.glowing = e.life > 0;
+
+      const flow = velocity(e.x, e.y);
+      const relx = flow.u - e.vx;
+      const rely = flow.v - e.vy;
+      const rel = Math.hypot(relx, rely) + 1e-6;
+      // Drag: ½ ρ Cd A |urel| urel
+      const k = 0.5 * rhoAir * Cd * e.A * rel;
+      const ax = (k * relx) / e.m;
+      const ay = (k * rely) / e.m - g;
+      // Mild buoyancy while hot
+      const buoy = e.glowing ? 1.8 * params.Q * (e.life / params.life) : 0;
+      e.vx += ax * dt;
+      e.vy += (ay + buoy) * dt;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+
+      if (params.showTrails) {
+        e.trail.push({ x: e.x, y: e.y, g: e.glowing });
+        if (e.trail.length > 48) e.trail.shift();
+      }
+
+      // Out of domain
+      if (e.x < W.xmin - 5 || e.x > W.xmax + 5 || e.y > W.ymax + 5) continue;
+
+      // Land
+      if (e.y <= 0.15) {
+        e.y = 0.15;
+        e.landed = true;
+        stats.totalLand++;
+        const rev = isReverse(e.x, 0.5);
+        if (rev) stats.reverseLand++;
+        // Deposit heat on fuels
+        for (const f of fuels) {
+          if (f.ignited) continue;
+          if (e.x >= f.x && e.x <= f.x + f.w && e.y <= f.h + 0.5) {
+            const heat = e.glowing ? (0.55 + 0.5 * (e.life / Math.max(params.life, 0.1))) : 0.08;
+            f.energy += heat * (6 / Math.max(params.diam, 1)); // smaller can be hotter per mass cartoon
+            if (f.energy >= params.moisture) {
+              f.ignited = true;
+              if (f.upwind) stats.upwindIgnite++;
+              // secondary sparks
+              for (let k = 0; k < 10; k++) {
+                sparks.push({
+                  x: f.x + f.w * Math.random(), y: 0.3,
+                  vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 3,
+                  life: 0.4 + Math.random() * 0.5,
+                });
+              }
+            }
+          }
+        }
+        continue;
+      }
+      next.push(e);
+    }
+    embers = next;
+
+    // sparks
+    sparks = sparks.filter((s) => {
+      s.life -= dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy -= 6 * dt;
+      return s.life > 0 && s.y > 0;
+    });
+  }
+
+  // ----- Rendering -----
+  function resize() {
+    const r = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(r.width * dpr);
+    canvas.height = Math.floor(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function worldToScreen(x, y) {
+    const r = canvas.parentElement.getBoundingClientRect();
+    const sx = ((x - W.xmin) / (W.xmax - W.xmin)) * r.width;
+    const sy = r.height - ((y - W.ymin) / (W.ymax - W.ymin)) * r.height;
+    return [sx, sy];
+  }
+
+  function drawArrow(x0, y0, x1, y1, color, w = 1) {
+    const [a, b] = worldToScreen(x0, y0);
+    const [c, d] = worldToScreen(x1, y1);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(a, b);
+    ctx.lineTo(c, d);
+    ctx.stroke();
+    const ang = Math.atan2(d - b, c - a);
+    const ah = 5;
+    ctx.beginPath();
+    ctx.moveTo(c, d);
+    ctx.lineTo(c - ah * Math.cos(ang - 0.4), d - ah * Math.sin(ang - 0.4));
+    ctx.lineTo(c - ah * Math.cos(ang + 0.4), d - ah * Math.sin(ang + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  function draw() {
+    const r = canvas.parentElement.getBoundingClientRect();
+    const Wpx = r.width, Hpx = r.height;
+    // Sky gradient
+    const g = ctx.createLinearGradient(0, 0, 0, Hpx);
+    g.addColorStop(0, "#1c1528");
+    g.addColorStop(0.45, "#2a1f18");
+    g.addColorStop(1, "#0f1410");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, Wpx, Hpx);
+
+    // Ground
+    const [, gy] = worldToScreen(0, 0);
+    ctx.fillStyle = "#1a2218";
+    ctx.fillRect(0, gy, Wpx, Hpx - gy);
+    // grass texture
+    ctx.strokeStyle = "rgba(74, 100, 60, 0.25)";
+    ctx.lineWidth = 1;
+    for (let x = W.xmin; x < W.xmax; x += 1.2) {
+      const [sx] = worldToScreen(x, 0);
+      ctx.beginPath();
+      ctx.moveTo(sx, gy);
+      ctx.lineTo(sx + 2, gy - 6 - (x * 5) % 5);
+      ctx.stroke();
+    }
+
+    // Reverse-flow region highlight
+    if (params.showReverse && params.wind > 0.2) {
+      ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (let x = W.xmin; x <= W.xmax; x += 0.4) {
+        for (let y = 0.2; y < 5; y += 0.35) {
+          if (isReverse(x, y)) {
+            const [sx, sy] = worldToScreen(x, y);
+            if (!started) { ctx.moveTo(sx, sy); started = true; }
+            ctx.fillRect(sx - 2, sy - 2, 4, 4);
+          }
+        }
+      }
+      // Label
+      const [lx, ly] = worldToScreen(fireX + 6, 1.2);
+      ctx.font = "600 11px JetBrains Mono, monospace";
+      ctx.fillStyle = "rgba(56, 189, 248, 0.9)";
+      ctx.fillText("reverse-flow pocket (u < 0)", lx, ly);
+    }
+
+    // Velocity field
+    if (params.showField) {
+      for (let x = W.xmin + 2; x < W.xmax; x += 3.2) {
+        for (let y = 0.8; y < W.ymax - 2; y += 2.4) {
+          const f = velocity(x, y);
+          const s = 0.55;
+          const rev = f.u < -0.1;
+          drawArrow(x, y, x + f.u * s, y + f.v * s,
+            rev ? "rgba(56,189,248,0.75)" : "rgba(167,139,250,0.4)", rev ? 1.4 : 0.9);
+        }
+      }
+    }
+
+    // Ambient wind annotation
+    drawArrow(W.xmin + 4, W.ymax - 4, W.xmin + 4 + params.wind * 1.1, W.ymax - 4,
+      "rgba(196, 181, 253, 0.85)", 2);
+    const [awx, awy] = worldToScreen(W.xmin + 4, W.ymax - 5.2);
+    ctx.fillStyle = "rgba(196,181,253,0.9)";
+    ctx.font = "600 11px JetBrains Mono, monospace";
+    ctx.fillText(`ambient wind Uʷ = ${params.wind.toFixed(1)} m/s →`, awx, awy);
+
+    // Plume / flame
+    const plume = [];
+    for (let y = 0; y < 28; y += 0.5) {
+      const { xc } = velocity(fireX, y);
+      plume.push({ x: xc, y });
+    }
+    // Soft plume glow
+    for (let i = plume.length - 1; i >= 0; i--) {
+      const p = plume[i];
+      const [sx, sy] = worldToScreen(p.x, p.y);
+      const rad = (18 + 40 * params.Q) * (1 - i / plume.length) + 8;
+      const grd = ctx.createRadialGradient(sx, sy, 0, sx, sy, rad);
+      const a = 0.08 * params.Q * (1 - i / plume.length);
+      grd.addColorStop(0, `rgba(251, 146, 60, ${a})`);
+      grd.addColorStop(0.5, `rgba(239, 68, 68, ${a * 0.5})`);
+      grd.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Flame core
+    const [fx, fy] = worldToScreen(fireX, 0);
+    const flameH = 40 + 50 * params.Q;
+    const fg = ctx.createLinearGradient(fx, fy, fx, fy - flameH);
+    fg.addColorStop(0, "rgba(250, 204, 21, 0.95)");
+    fg.addColorStop(0.35, "rgba(249, 115, 22, 0.9)");
+    fg.addColorStop(0.75, "rgba(220, 38, 38, 0.55)");
+    fg.addColorStop(1, "rgba(80, 20, 20, 0)");
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.moveTo(fx - 18 - 6 * params.Q, fy);
+    ctx.quadraticCurveTo(fx - 10, fy - flameH * 0.5, fx + Math.sin(t * 9) * 4, fy - flameH);
+    ctx.quadraticCurveTo(fx + 10, fy - flameH * 0.5, fx + 18 + 6 * params.Q, fy);
+    ctx.closePath();
+    ctx.fill();
+
+    // Fuels
+    for (const f of fuels) {
+      const [x0, y0] = worldToScreen(f.x, 0);
+      const [x1, y1] = worldToScreen(f.x + f.w, f.h);
+      const w = x1 - x0, h = y0 - y1;
+      if (f.ignited) {
+        ctx.fillStyle = "rgba(239, 68, 68, 0.85)";
+        ctx.strokeStyle = "#fbbf24";
+      } else {
+        const frac = Math.min(1, f.energy / params.moisture);
+        ctx.fillStyle = f.upwind
+          ? `rgba(${40 + frac * 100}, ${80 - frac * 40}, ${40}, 0.9)`
+          : `rgba(${50 + frac * 80}, ${90 - frac * 30}, ${45}, 0.85)`;
+        ctx.strokeStyle = f.upwind ? "rgba(74, 222, 128, 0.6)" : "rgba(120, 100, 70, 0.5)";
+      }
+      ctx.fillRect(x0, y1, w, h);
+      ctx.strokeRect(x0, y1, w, h);
+      // heat bar
+      if (!f.ignited && f.energy > 0.01) {
+        ctx.fillStyle = "rgba(251, 146, 60, 0.9)";
+        ctx.fillRect(x0, y1 - 5, w * Math.min(1, f.energy / params.moisture), 3);
+      }
+      if (f.label) {
+        ctx.fillStyle = f.upwind ? "#4ade80" : "#a8a29e";
+        ctx.font = "600 10px JetBrains Mono, monospace";
+        ctx.fillText(f.label, x0, y1 - 8);
+      }
+    }
+
+    // Embers
+    for (const e of embers) {
+      if (params.showTrails && e.trail.length > 1) {
+        ctx.beginPath();
+        for (let i = 0; i < e.trail.length; i++) {
+          const [tx, ty] = worldToScreen(e.trail[i].x, e.trail[i].y);
+          if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+        }
+        ctx.strokeStyle = e.glowing ? "rgba(251, 191, 36, 0.35)" : "rgba(120, 120, 120, 0.25)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+      const [ex, ey] = worldToScreen(e.x, e.y);
+      const rad = Math.max(2, e.d * 400);
+      if (e.glowing) {
+        const eg = ctx.createRadialGradient(ex, ey, 0, ex, ey, rad * 4);
+        eg.addColorStop(0, "rgba(254, 243, 199, 0.95)");
+        eg.addColorStop(0.3, "rgba(251, 146, 60, 0.7)");
+        eg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = eg;
+        ctx.beginPath();
+        ctx.arc(ex, ey, rad * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = e.glowing ? "#fbbf24" : "#78716c";
+      ctx.beginPath();
+      ctx.arc(ex, ey, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const s of sparks) {
+      const [sx, sy] = worldToScreen(s.x, s.y);
+      ctx.fillStyle = `rgba(251, 146, 60, ${Math.min(1, s.life)})`;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+
+    // Fire base marker
+    ctx.fillStyle = "#ef4444";
+    ctx.font = "700 11px JetBrains Mono, monospace";
+    const [flx, fly] = worldToScreen(fireX - 2, -0.2);
+    ctx.fillText("MAIN FIRE", flx, fly + 14);
+  }
+
+  // ----- Loop -----
+  let last = performance.now();
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (!params.pause) {
+      t += dt;
+      emitAcc += params.rate * dt;
+      while (emitAcc >= 1) {
+        spawnEmber();
+        emitAcc -= 1;
+      }
+      stepEmbers(dt);
+    }
+    draw();
+    updateMeta();
+  }
+
+  function updateMeta() {
+    // Measure reverse pocket strength
+    let revMax = 0;
+    for (let x = fireX; x < fireX + 20; x += 0.5) {
+      const { u } = velocity(x, 0.6);
+      if (u < revMax) revMax = u;
+    }
+    const el = document.getElementById("meta");
+    const success = stats.upwindIgnite > 0;
+    el.innerHTML =
+      `t=<b>${t.toFixed(1)}s</b> · reverse u<sub>min</sub>=<b class="cool">${revMax.toFixed(2)}</b> m/s` +
+      `<br>embers lofted <b>${stats.lofted}</b> · landings <b>${stats.totalLand}</b>` +
+      ` · in reverse pocket <b class="cool">${stats.reverseLand}</b>` +
+      `<br>upwind ignitions: <b class="${success ? "ok" : "hot"}">${stats.upwindIgnite}</b>` +
+      (success
+        ? ` · <span class="ok">counter-wind spotting observed</span>`
+        : ` · raise Q* / E or lower U<sub>w</sub> / moisture`);
+  }
+
+  // UI wiring
+  function bind(id, key, fmt) {
+    const el = document.getElementById(id);
+    const lab = document.getElementById(id + "Val");
+    const apply = () => {
+      params[key] = parseFloat(el.value);
+      if (lab) lab.textContent = fmt(params[key]);
+    };
+    el.addEventListener("input", apply);
+    apply();
+  }
+  bind("wind", "wind", (v) => v.toFixed(1));
+  bind("Q", "Q", (v) => v.toFixed(2));
+  bind("entrain", "entrain", (v) => v.toFixed(2));
+  bind("tilt", "tilt", (v) => v.toFixed(2));
+  bind("diam", "diam", (v) => v.toFixed(1));
+  bind("rate", "rate", (v) => String(Math.round(v)));
+  bind("life", "life", (v) => v.toFixed(1));
+  bind("moisture", "moisture", (v) => v.toFixed(2));
+
+  ["showField", "showReverse", "showTrails", "pause"].forEach((id) => {
+    const el = document.getElementById(id);
+    el.addEventListener("change", () => { params[id] = el.checked; });
+    params[id] = el.checked;
+  });
+
+  document.getElementById("btnReset").onclick = () => resetAll();
+
+  const presets = {
+    calm: { wind: 1.2, Q: 1.2, entrain: 1.5, tilt: 0.4, diam: 5, rate: 10, life: 9, moisture: 0.45 },
+    classic: { wind: 3.5, Q: 1.8, entrain: 1.35, tilt: 0.85, diam: 6, rate: 12, life: 8, moisture: 0.55 },
+    fierce: { wind: 2.5, Q: 3.2, entrain: 2.0, tilt: 0.7, diam: 8, rate: 20, life: 10, moisture: 0.4 },
+    gale: { wind: 9, Q: 2.5, entrain: 1.0, tilt: 1.4, diam: 4, rate: 15, life: 5, moisture: 0.7 },
+  };
+  document.getElementById("presets").onclick = (e) => {
+    const b = e.target.closest("button[data-p]");
+    if (!b) return;
+    document.querySelectorAll("#presets button").forEach((x) => x.classList.toggle("on", x === b));
+    const p = presets[b.dataset.p];
+    Object.assign(params, p);
+    for (const [id, key] of [
+      ["wind", "wind"], ["Q", "Q"], ["entrain", "entrain"], ["tilt", "tilt"],
+      ["diam", "diam"], ["rate", "rate"], ["life", "life"], ["moisture", "moisture"],
+    ]) {
+      const el = document.getElementById(id);
+      el.value = params[key];
+      el.dispatchEvent(new Event("input"));
+    }
+    resetAll();
+  };
+
+  requestAnimationFrame(frame);
+  console.log(BUILD, "Ember Counterflow — reverse-flow firebrand lab");
+})();
+</script>
+</body>
+</html>
