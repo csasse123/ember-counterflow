@@ -1,45 +1,41 @@
 # Ember Counterflow
 
-**Why can a wildfire ember fly *against* the wind and light fuel upwind?**
+**Why can a wildfire ember travel *against* the ambient wind?**
 
-Interactive HTML lab of fire–atmosphere coupling: ambient wind, a buoyant plume,
-ground-level **in-draft** (entrainment), a reverse-flow pocket, and Lagrangian
-firebrands that can land and ignite **upwind** of the flame — the
-counterintuitive case many firefighters and observers report.
+v2 solves a real **2D Boussinesq Navier–Stokes** system (stream-function / vorticity)
+with a fire heat source. Reverse ground flow is an **emergent** solution — not a
+painted cartoon velocity field.
 
-Live (after Pages deploy): `https://csasse123.github.io/ember-counterflow/`
+Live: [csasse123.github.io/ember-counterflow](https://csasse123.github.io/ember-counterflow/)
 
-## Physics (pedagogical model)
+## Physics
 
-Not full LES (FIRETEC / WRF-SFIRE). A **reduced-order field** that captures the
-mechanism:
+| Equation | Role |
+|----------|------|
+| \(\nabla\cdot\mathbf{u}=0\) | Incompressible continuity via \(\psi\) |
+| Vorticity transport + \(\nu\nabla^2\omega\) | Momentum (NS) |
+| \(g\beta_T\,\partial_x T\) | Boussinesq baroclinic torque (buoyancy) |
+| Heat advection–diffusion + \(Q^*\) | Fire as volumetric heat source |
+| Lagrangian drag + gravity | Embers on the **NS velocity field** |
 
-1. **Ambient wind** \(U_w\) left → right.  
-2. **Heat release** \(Q\) drives a **buoyant plume** (tilted by wind).  
-3. **Entrainment / in-draft**: mass continuity for the rising plume → horizontal
-   inflow toward the fire base. On the **downwind** side this inflow **opposes**
-   ambient wind and can reverse the ground-level flow.  
-4. **Embers** (Lagrangian particles): drag + gravity; lofted in the plume, then
-   advected by the local velocity (including reverse pockets).  
-5. **Fuel ignition**: energy deposited by hot embers that land (threshold model).
+Same structure as simplified plume CFD / FDS-class low-Mach thinking (2D, teaching scale).
 
-References for the real phenomenon: firebrand / spotting reviews (Koo et al.),
-fire-induced winds and plume entrainment (Kochanski and others), FIRETEC-class
-coupled fire–atmosphere models, NWCG spotting behavior notes.
+See [docs/PHYSICS.md](docs/PHYSICS.md).
 
-## Controls
+## How to see reverse spotting
 
-- Wind speed, fire intensity, entrainment strength  
-- Ember size / number / loft temperature  
-- Fuel moisture (ignition threshold)  
-- Show velocity field, reverse-flow region, trajectories  
+1. Preset **Demo reverse** (moderate wind, strong fire).  
+2. Wait ~10–20 s for the plume and in-draft to develop.  
+3. Cyan region = **u &lt; 0** (against free-stream).  
+4. Watch upwind (green) fuel ignite.
+
+If **Wind wins** (high \(U_w\)), reverse pockets disappear — correct physically.
 
 ## Run
 
 ```bash
 cd ember-counterflow
 python3 -m http.server 8770
-# http://localhost:8770
 ```
 
 ## License
