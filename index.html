@@ -88,31 +88,31 @@
   <div id="main">
     <canvas id="c3"></canvas>
     <div class="hud">
-      <div class="badge">3D Navier–Stokes · live firebrand</div>
-      <h1>Ember against the wind</h1>
+      <div class="badge">3D Navier–Stokes · bulk with wind · rare reverse</div>
+      <h1>Most embers with the wind — a few fly back</h1>
       <p>
-        <b style="color:#fb923c">Orange</b> = hot plume (solved heat).
-        <b style="color:#fde047">Yellow ball</b> = hero ember we follow.
-        <b style="color:#e879f9">Magenta</b> = reverse ground flow (u against free-stream).
-        <b style="color:#4ade80">Green pads</b> = fuel in the reverse corridor.
+        <b style="color:#fb923c">Orange</b> = hot plume.
+        <b style="color:#ffb86b">Small sparks</b> = main stream (with free-stream wind →).
+        <b style="color:#fde047">Yellow ball(s)</b> = the rare 1–2 reverse riders.
+        <b style="color:#e879f9">Magenta</b> = reverse ground flow.
+        <b style="color:#4ade80">Green</b> = reverse-ignition fuel.
       </p>
     </div>
     <div class="story-bar" id="story">Starting 3D Navier–Stokes plume…</div>
-    <div class="build" id="build">v4.1.2</div>
+    <div class="build" id="build">v4.2.0</div>
   </div>
   <div id="cut">
-    <div class="cut-tag">SIDE CUT · same 3D NS field · yellow = hero path · magenta arrows = reverse</div>
+    <div class="cut-tag">SIDE CUT · same NS field · orange sparks with wind · yellow = rare reverse riders</div>
     <canvas id="c2"></canvas>
   </div>
   <aside>
     <div class="box">
-      <b>Real PDE, not a keyframe cartoon</b><br>
-      Air is 3D incompressible Boussinesq Navier–Stokes (projection method) + heat.
-      The side cut samples the <b>same</b> velocity/temperature arrays as the 3D view.
-      Embers are Lagrangian particles with drag + gravity in that field.<br><br>
-      <b>Story you should see:</b> reverse flow (magenta) forms under the lee of the plume →
-      a yellow hero leaves the fire → falls into reverse → rides <b>against free-stream wind</b> →
-      lands on green fuel and ignites it (red).
+      <b>What actually happens in a fire</b><br>
+      Almost every firebrand rides <b>with the free-stream wind</b> (left → right) and spots downwind.
+      Only <b>one or two</b> heavy pieces fall into the fire-induced reverse pocket (magenta) and fly
+      <b>backwards</b> — that is reverse ignition on the green pads.<br><br>
+      Air is solved with 3D Boussinesq Navier–Stokes; particles are Lagrangian on that field.
+      Side cut and 3D share the same arrays.
     </div>
 
     <h2>Scenario</h2>
@@ -141,9 +141,9 @@
     <div class="row"><span class="hint">Lower = sharper reverse cell.</span></div>
     <div class="row"><span>Mixing</span><span class="val" id="nuVal">0.050</span></div>
 
-    <button type="button" class="btn primary" id="btnHero">Release hero from the fire</button>
+    <button type="button" class="btn primary" id="btnHero">Release 1 reverse rider</button>
     <button type="button" class="btn ghost" id="btnReset">Restart fire + air</button>
-    <label class="check"><input type="checkbox" id="follow" checked /> Camera follows hero ember</label>
+    <label class="check"><input type="checkbox" id="follow" checked /> Camera follows reverse rider</label>
     <label class="check"><input type="checkbox" id="pause" /> Pause</label>
 
     <div class="status" id="meta">…</div>
@@ -163,7 +163,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Fluid3D } from "./solver3d.js";
 
-const BUILD = "v4.1.2";
+const BUILD = "v4.2.0";
 document.getElementById("build").textContent = BUILD;
 
 // =============================================================================
@@ -268,13 +268,17 @@ for (let i = 0; i < REV_ARROWS; i++) {
   revArrowPool.push(g);
 }
 
-// Hero ember
-const heroMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.65, 18, 14),
-  new THREE.MeshBasicMaterial({ color: 0xfde047 })
-);
-heroMesh.visible = false;
-scene.add(heroMesh);
+// Reverse riders (yellow) — at most two; bulk stream is the small orange points
+const riderMeshes = [0, 1].map(() => {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.62, 18, 14),
+    new THREE.MeshBasicMaterial({ color: 0xfde047 })
+  );
+  mesh.visible = false;
+  scene.add(mesh);
+  return mesh;
+});
+const heroMesh = riderMeshes[0];
 const heroGlow = new THREE.PointLight(0xffaa00, 3.2, 22, 2);
 heroGlow.visible = false;
 scene.add(heroGlow);
@@ -352,28 +356,43 @@ fireLight.position.set(0, 3.5, 0);
 scene.add(fireLight);
 
 // =============================================================================
-// Embers + hero
+// Embers — bulk WITH the wind; at most 1–2 reverse riders
 // =============================================================================
 /** @type {object[]} */
 const embers = [];
+/** Active reverse riders (yellow), max 2 */
+/** @type {object[]} */
+let reverseRiders = [];
+/** Primary camera target (first flying reverse rider) */
 /** @type {null | object} */
 let hero = null;
+/** Combined trail of the primary reverse rider */
 /** @type {{x:number,y:number,z:number}[]} */
 let heroTrail = [];
-let heroDone = false;
-let autoHeroReady = false;
-let nextAutoHeroAt = 8;
+let reverseRidersReleased = 0;
+const MAX_REVERSE_RIDERS = 2;
+let nextAutoRiderAt = 5;
 let emitAcc = 0;
 let tSim = 0;
-const stats = { lofted: 0, land: 0, revLand: 0, againstIg: 0 };
-const ui = { diam: 9, rate: 14, life: 14, moisture: 0.28, follow: true, pause: false };
+const stats = { lofted: 0, land: 0, downwindLand: 0, revLand: 0, againstIg: 0, downwindIg: 0 };
+const ui = { diam: 4, rate: 22, life: 16, moisture: 0.22, follow: true, pause: false };
 
 function setStory(html) {
   document.getElementById("story").innerHTML = html;
 }
 
+function countFlyingRiders() {
+  return reverseRiders.filter((e) => e && !e.landed && embers.includes(e)).length;
+}
+
+function syncHeroTarget() {
+  // Prefer a still-flying reverse rider for camera / trail
+  hero = reverseRiders.find((e) => e && !e.landed && embers.includes(e))
+    || reverseRiders.find((e) => e && e.landed)
+    || null;
+}
+
 function findReverseDrop() {
-  // Best reverse cell near ground, z near 0, for hero fall-in targeting
   let best = null;
   const jMax = Math.min(5, fluid.ny - 2);
   for (let k = 1; k < fluid.nz - 1; k++) {
@@ -394,41 +413,66 @@ function findReverseDrop() {
   return best || { x: 5, y: 1.2, z: 0, u: -1 };
 }
 
+/**
+ * Bulk stream: light sparks loft high in the free-stream plume and go WITH the wind.
+ * Reverse riders: heavy firebrands that fall into reverse and fly BACKWARDS (max 2).
+ */
 function spawnEmber(opts = {}) {
-  const d = (opts.d || ui.diam) * 1e-3;
-  // Hero: large dense char — after a short loft it falls ballistically into reverse
-  const rho = opts.hero ? 900 : 280;
+  const isHero = !!opts.hero;
+  const d = (opts.d || (isHero ? 14 : ui.diam)) * 1e-3;
+  // Light bulk stays aloft in free-stream; heavy riders fall into reverse
+  const rho = isHero ? 900 : 180;
   const m = rho * (Math.PI / 6) * d ** 3;
   const A = Math.PI * d * d / 4;
-  const x = opts.x ?? (Math.random() - 0.5) * 1.4;
-  const z = opts.z ?? (Math.random() - 0.5) * 1.4;
-  const y = opts.y ?? (0.7 + Math.random() * 1.8);
+  const x = opts.x ?? (Math.random() - 0.5) * 1.2;
+  const z = opts.z ?? (Math.random() - 0.5) * 1.2;
+  const y = opts.y ?? (0.6 + Math.random() * 1.4);
+  const U = fluid.params.wind;
   const s = fluid.sample(x, y, z);
   const e = {
     x, y, z,
-    vx: opts.vx ?? (s.u * 0.2 + (Math.random() - 0.5) * 0.5),
-    vy: opts.vy ?? (Math.max(s.v, 0.8) + 1.2 + Math.random() * 1.5),
-    vz: opts.vz ?? (s.w * 0.2 + (Math.random() - 0.5) * 0.5),
+    // Bulk: launch with free-stream bias so the main stream is clearly downwind
+    vx: opts.vx ?? (isHero
+      ? 3.5 + Math.random() * 1.5
+      : Math.max(U, s.u > 0 ? s.u : U) * (0.6 + Math.random() * 0.5) + Math.random() * 0.8),
+    vy: opts.vy ?? (isHero
+      ? 6.0 + Math.random() * 1.2
+      : 2.5 + Math.random() * 3.5 + Math.max(0, s.v) * 0.35),
+    vz: opts.vz ?? ((Math.random() - 0.5) * (isHero ? 0.25 : 0.9)),
     m, A, d, rho,
-    life: ui.life * (0.85 + Math.random() * 0.3),
+    life: ui.life * (0.85 + Math.random() * 0.35),
     glowing: true,
-    isHero: !!opts.hero,
+    isHero,
     phase: opts.phase || "loft",
     tLive: 0,
     maxRev: 0,
     landed: false,
+    trail: isHero ? [{ x, y, z }] : null,
   };
   embers.push(e);
   stats.lofted++;
-  if (e.isHero) {
-    hero = e;
-    heroTrail = [{ x: e.x, y: e.y, z: e.z }];
-    heroDone = false;
+
+  if (isHero) {
+    reverseRiders.push(e);
+    reverseRidersReleased++;
+    // Keep at most MAX_REVERSE_RIDERS in the list (landed stay for a bit, then prune old)
+    while (reverseRiders.length > MAX_REVERSE_RIDERS) {
+      const old = reverseRiders.shift();
+      if (old && !old.landed) {
+        const ix = embers.indexOf(old);
+        if (ix >= 0) embers.splice(ix, 1);
+      }
+    }
+    syncHeroTarget();
+    if (hero === e) heroTrail = [{ x: e.x, y: e.y, z: e.z }];
+    const n = reverseRidersReleased;
     setStory(
-      "Hero left the <b>fire</b>. Watch it loft, then fall into the <span class='rev'>magenta reverse flow</span> and ride <b>against free-stream wind</b> toward green fuel…"
+      n === 1
+        ? "Main stream is already flying <b>with the wind</b> →. Reverse rider #1 left the fire — the rare piece that can fall into magenta reverse and fly <span class='rev'>backwards</span>…"
+        : "Reverse rider #" + n + " released. Still only a few pieces fly back — the rest keep going with free-stream wind."
     );
   }
-  // Cap background particles; never drop the hero
+
   while (embers.length > MAX_E) {
     const i = embers.findIndex((p) => !p.isHero);
     if (i < 0) break;
@@ -437,28 +481,21 @@ function spawnEmber(opts = {}) {
   return e;
 }
 
-/**
- * Hero starts IN the fire, short loft with the plume, then ballistic fall into the
- * lee reverse cell. Horizontal motion uses the live NS field (u < 0 against wind).
- */
+/** Rare reverse firebrand — only 1–2 of these vs the bulk stream */
 function spawnHero() {
-  for (let i = embers.length - 1; i >= 0; i--) {
-    if (embers[i].isHero) embers.splice(i, 1);
+  if (countFlyingRiders() >= MAX_REVERSE_RIDERS) {
+    setStory("Already tracking " + MAX_REVERSE_RIDERS + " reverse riders. Bulk stream still goes with the wind.");
+    return null;
   }
-  hero = null;
-  heroTrail = [];
-  heroDone = false;
-
   return spawnEmber({
     hero: true,
     x: 0.2 + Math.random() * 0.6,
     y: 1.1 + Math.random() * 0.3,
     z: (Math.random() - 0.5) * 0.35,
-    // Throw into the lee so reverse has room to carry it back against free-stream
     vx: 3.5 + Math.random() * 1.5,
     vy: 6.0 + Math.random() * 1.2,
     vz: (Math.random() - 0.5) * 0.25,
-    d: 14, // mm — heavy firebrand
+    d: 14,
     phase: "loft",
   });
 }
@@ -467,6 +504,7 @@ function stepEmbers(dt) {
   const g = 9.81;
   const rhoAir = 1.15;
   const Cd = 1.0;
+  const U = fluid.params.wind;
 
   for (let i = embers.length - 1; i >= 0; i--) {
     const e = embers[i];
@@ -479,29 +517,26 @@ function stepEmbers(dt) {
     const s = fluid.sample(e.x, e.y, e.z);
     if (s.u < -0.15) e.maxRev++;
 
-    // --- Hero phase machine ---
-    // Quadratic drag in a 15–30 m/s plume will never let a particle fall if kv>0.
-    // After loft: ballistic vertical (kv=0), horizontal drag only — rides reverse u.
+    // --- Reverse-rider phase machine (only heroes) ---
     if (e.isHero) {
       if (e.phase === "loft" && (e.y > 4.5 || e.tLive > 1.1)) {
         e.phase = "fall";
         e.vy = Math.min(e.vy, 0.5);
-        setStory("Hero left the plume peak — falling into the <span class='rev'>lee reverse pocket</span>…");
+        if (e === hero) {
+          setStory("Reverse rider falling toward the <span class='rev'>lee reverse pocket</span> while bulk sparks keep going with the wind →…");
+        }
       }
-      // Enter reverse only once we have reached the lee (x>1.5) so the ride-back is visible
       if (
         (e.phase === "fall" || e.phase === "reverse") &&
         s.u < -0.25 && e.y < 3.5 && e.x > 1.2
       ) {
-        if (e.phase !== "reverse") {
-          setStory("<span class='rev'>Hero entered reverse ground flow</span> — riding against free-stream wind onto green fuel…");
+        if (e.phase !== "reverse" && e === hero) {
+          setStory("<span class='rev'>One ember is flying backwards</span> in reverse ground flow — bulk stream still with free-stream wind →");
         }
         e.phase = "reverse";
       }
-      // Aim fall into the strongest reverse cell (live PDE field)
       if (e.phase === "fall" || e.phase === "loft") {
         const drop = findReverseDrop();
-        // Stronger aim during fall; mild during loft so path goes into lee
         const gain = e.phase === "fall" ? 4.5 : 1.2;
         e.vx += (drop.x - e.x) * gain * dt;
         e.vz += (drop.z - e.z) * gain * 0.7 * dt;
@@ -514,30 +549,46 @@ function stepEmbers(dt) {
     const rel = Math.hypot(rx, ry, rz) + 1e-6;
     const kDrag = 0.5 * rhoAir * Cd * e.A * rel;
 
-    let kh = 2.2;
+    let kh = 2.0;
     let kv = 2.0;
 
     if (e.isHero) {
+      // Rare reverse riders
       if (e.phase === "loft") {
-        // Vertical plume ride only — do NOT couple horizontally (near-fire reverse
-        // would cancel the throw into the lee before the arc is visible).
         kh = 0;
         kv = 2.0;
-        e.vx = Math.max(e.vx, 3.2); // keep carrying into lee
+        e.vx = Math.max(e.vx, 3.2);
       } else if (e.phase === "fall") {
         kh = 4;
-        kv = 0; // ballistic fall
+        kv = 0;
       } else {
-        // reverse: ride live NS reverse (u < 0) against free-stream
         kh = 40;
         kv = 0;
         e.vx = e.vx * 0.4 + s.u * 0.6;
         e.vz = e.vz * 0.4 + s.w * 0.6;
         e.vy = Math.min(e.vy, -0.5);
       }
-    } else if (e.y < 3 && s.u < -0.12) {
-      kh = 6;
-      kv = 1.0;
+    } else {
+      // BULK STREAM: stay with free-stream / plume aloft; do NOT lock into reverse
+      if (e.y > 2.5) {
+        // High in free-stream: strong horizontal coupling, ride plume
+        kh = 5;
+        kv = 2.8;
+        // Soft bias with free-stream so the main flow is clearly →
+        if (s.u > 0.2) e.vx = Math.max(e.vx, Math.min(s.u, U * 1.4));
+      } else {
+        // Near ground: still prefer free-stream direction; weak reverse coupling
+        // (only the heavy yellow riders are meant to fly back)
+        kh = 2.5;
+        kv = 1.4;
+        if (s.u < 0) {
+          // Light sparks fall through reverse pocket without reverse-locking
+          kh = 0.6;
+          e.vx = Math.max(e.vx, U * 0.35);
+        } else {
+          e.vx = Math.max(e.vx, s.u * 0.5);
+        }
+      }
     }
 
     e.vx += (kh * kDrag * rx / e.m) * dt;
@@ -548,7 +599,7 @@ function stepEmbers(dt) {
       e.vy = Math.min(e.vy, 1.0);
     }
 
-    e.vx = Math.max(-16, Math.min(16, e.vx));
+    e.vx = Math.max(-16, Math.min(18, e.vx));
     e.vy = Math.max(-22, Math.min(14, e.vy));
     e.vz = Math.max(-16, Math.min(16, e.vz));
 
@@ -556,7 +607,11 @@ function stepEmbers(dt) {
     e.y += e.vy * dt;
     e.z += e.vz * dt;
 
-    if (e.isHero) {
+    if (e.isHero && e.trail) {
+      e.trail.push({ x: e.x, y: e.y, z: e.z });
+      if (e.trail.length > TRAIL_MAX) e.trail.shift();
+    }
+    if (e === hero) {
       heroTrail.push({ x: e.x, y: e.y, z: e.z });
       if (heroTrail.length > TRAIL_MAX) heroTrail.shift();
     }
@@ -569,14 +624,18 @@ function stepEmbers(dt) {
       stats.land++;
       const uLand = fluid.sample(e.x, 0.5, e.z).u;
       if (uLand < -0.08) stats.revLand++;
+      if (e.x > 8) stats.downwindLand++;
 
       let hitKind = null;
       for (const f of fuels) {
         if (f.ig) continue;
         if (e.x >= f.x && e.x <= f.x + f.w && e.z >= f.z && e.z <= f.z + f.d) {
-          const heat = e.glowing ? 1.2 : 0.1;
-          f.e += heat;
-          // Hero single landing is enough energy; others need moisture threshold
+          // Bulk only ignites downwind pads easily; reverse pads need reverse rider
+          if (!e.isHero && (f.kind === "reverse" || f.kind === "upwind")) {
+            f.e += e.glowing ? 0.05 : 0; // almost no reverse ignition from bulk
+          } else {
+            f.e += e.glowing ? (e.isHero ? 1.2 : 0.45) : 0.05;
+          }
           const need = e.isHero ? 0.15 : ui.moisture;
           if (f.e >= need) {
             f.ig = true;
@@ -585,32 +644,30 @@ function stepEmbers(dt) {
             f.mesh.material.emissiveIntensity = 0.9;
             hitKind = f.kind;
             if (f.kind === "reverse" || f.kind === "upwind") stats.againstIg++;
+            if (f.kind === "downwind") stats.downwindIg++;
           }
         }
       }
 
       if (e.isHero) {
-        heroDone = true;
-        nextAutoHeroAt = tSim + 12;
+        nextAutoRiderAt = tSim + 14;
+        syncHeroTarget();
         if (hitKind === "reverse") {
           setStory(
-            "<span class='ok'>SUCCESS</span> — hero rode <span class='rev'>reverse flow against free-stream wind</span> and ignited green fuel in the lee corridor. That is fire-induced counterflow spotting."
+            "<span class='ok'>REVERSE IGNITION</span> — one rare ember flew <span class='rev'>backwards</span> in reverse flow and lit green fuel. " +
+            "The main stream still went with the wind (downwind pads)."
           );
         } else if (hitKind === "upwind") {
-          setStory(
-            "<span class='ok'>SUCCESS</span> — hero landed on upwind fuel (rare overshoot past the fire)."
-          );
+          setStory("<span class='ok'>REVERSE IGNITION</span> — reverse rider overshot onto upwind fuel.");
         } else if (e.maxRev > 8 || uLand < -0.08) {
           setStory(
-            "Hero rode reverse and landed in the reverse zone (x=" +
-              e.x.toFixed(1) +
-              " m). Missed green pad — release another hero."
+            "Reverse rider landed in reverse zone (x=" + e.x.toFixed(1) +
+            " m) but missed green pad. Bulk stream still with the wind →"
           );
         } else {
           setStory(
-            "Hero landed without a strong reverse ride (x=" +
-              e.x.toFixed(1) +
-              " m). Wait for magenta reverse, then release again."
+            "Reverse rider landed at x=" + e.x.toFixed(1) +
+            " m without a full reverse ride. Release another (max " + MAX_REVERSE_RIDERS + " flying)."
           );
         }
       } else {
@@ -626,14 +683,16 @@ function stepEmbers(dt) {
       e.y > fluid.Ly + 4
     ) {
       if (e.isHero) {
-        heroDone = true;
-        nextAutoHeroAt = tSim + 8;
-        setStory("Hero left the domain. Release another when reverse flow is strong.");
-        hero = null;
+        nextAutoRiderAt = tSim + 10;
+        const ix = reverseRiders.indexOf(e);
+        if (ix >= 0) reverseRiders.splice(ix, 1);
+        syncHeroTarget();
+        if (!hero) setStory("Reverse rider left the domain. Bulk stream continues with the wind →");
       }
       embers.splice(i, 1);
     }
   }
+  syncHeroTarget();
 }
 
 // =============================================================================
@@ -714,24 +773,33 @@ function updateReverse() {
 }
 
 function updateHeroViz() {
+  // Show up to 2 reverse riders as yellow spheres
+  for (let r = 0; r < riderMeshes.length; r++) {
+    const e = reverseRiders[r];
+    const mesh = riderMeshes[r];
+    if (e && embers.includes(e)) {
+      mesh.visible = true;
+      const y = e.landed ? Math.max(0.45, e.y) : e.y;
+      mesh.position.set(e.x, y, e.z);
+      const pulse = e.landed ? 1 : 1 + 0.12 * Math.sin(performance.now() * 0.01 + r);
+      mesh.scale.setScalar(pulse);
+    } else {
+      mesh.visible = false;
+    }
+  }
   if (hero) {
-    heroMesh.visible = true;
     heroGlow.visible = true;
-    const y = hero.landed ? Math.max(0.45, hero.y) : hero.y;
-    heroMesh.position.set(hero.x, y, hero.z);
-    heroGlow.position.copy(heroMesh.position);
-    // Pulse size while flying
-    const pulse = hero.landed ? 1 : 1 + 0.12 * Math.sin(performance.now() * 0.01);
-    heroMesh.scale.setScalar(pulse);
+    heroGlow.position.set(hero.x, hero.landed ? Math.max(0.45, hero.y) : hero.y, hero.z);
   } else {
-    heroMesh.visible = false;
     heroGlow.visible = false;
   }
-  const n = Math.min(heroTrail.length, TRAIL_MAX);
+  // Trail follows primary reverse rider
+  const src = (hero && hero.trail) ? hero.trail : heroTrail;
+  const n = Math.min(src.length, TRAIL_MAX);
   for (let i = 0; i < n; i++) {
-    trailPos[i * 3] = heroTrail[i].x;
-    trailPos[i * 3 + 1] = heroTrail[i].y;
-    trailPos[i * 3 + 2] = heroTrail[i].z;
+    trailPos[i * 3] = src[i].x;
+    trailPos[i * 3 + 1] = src[i].y;
+    trailPos[i * 3 + 2] = src[i].z;
   }
   trailGeo.setDrawRange(0, n);
   trailGeo.attributes.position.needsUpdate = true;
@@ -739,6 +807,7 @@ function updateHeroViz() {
 }
 
 function updateOtherEmbers() {
+  // Bulk stream: warm orange sparks flying with free-stream wind
   let n = 0;
   for (const e of embers) {
     if (e.isHero) continue;
@@ -746,9 +815,9 @@ function updateOtherEmbers() {
     ePos[n * 3] = e.x;
     ePos[n * 3 + 1] = e.y;
     ePos[n * 3 + 2] = e.z;
-    eCol[n * 3] = e.glowing ? 1 : 0.35;
+    eCol[n * 3] = e.glowing ? 1.0 : 0.4;
     eCol[n * 3 + 1] = e.glowing ? 0.55 : 0.35;
-    eCol[n * 3 + 2] = e.glowing ? 0.08 : 0.35;
+    eCol[n * 3 + 2] = e.glowing ? 0.15 : 0.3;
     n++;
   }
   for (let i = n; i < MAX_E; i++) ePos[i * 3 + 1] = -50;
@@ -849,24 +918,35 @@ function drawSide() {
     ctx2.fillRect(toX(f.x), toY(1.1), toX(f.x + f.w) - toX(f.x), toY(0) - toY(1.1));
   }
 
-  if (heroTrail.length > 1) {
-    ctx2.strokeStyle = "#fde047";
-    ctx2.lineWidth = 2.8;
+  // Bulk stream (with wind) as small orange dots on the cut
+  for (const e of embers) {
+    if (e.isHero || Math.abs(e.z) > 4) continue;
+    ctx2.fillStyle = e.glowing ? "rgba(255,160,60,0.85)" : "rgba(120,100,80,0.5)";
     ctx2.beginPath();
-    for (let i = 0; i < heroTrail.length; i++) {
-      const p = heroTrail[i];
-      const X = toX(p.x), Y = toY(p.y);
-      if (i === 0) ctx2.moveTo(X, Y); else ctx2.lineTo(X, Y);
-    }
-    ctx2.stroke();
+    ctx2.arc(toX(e.x), toY(e.y), 2.2, 0, Math.PI * 2);
+    ctx2.fill();
   }
-  if (hero) {
+
+  // Reverse riders (yellow) — the rare ones flying back
+  for (const e of reverseRiders) {
+    if (!e || !embers.includes(e)) continue;
+    if (e.trail && e.trail.length > 1) {
+      ctx2.strokeStyle = "#fde047";
+      ctx2.lineWidth = 2.4;
+      ctx2.beginPath();
+      for (let i = 0; i < e.trail.length; i++) {
+        const p = e.trail[i];
+        const X = toX(p.x), Y = toY(p.y);
+        if (i === 0) ctx2.moveTo(X, Y); else ctx2.lineTo(X, Y);
+      }
+      ctx2.stroke();
+    }
     ctx2.fillStyle = "#fde047";
     ctx2.beginPath();
-    ctx2.arc(toX(hero.x), toY(hero.y), 7, 0, Math.PI * 2);
+    ctx2.arc(toX(e.x), toY(e.y), 6.5, 0, Math.PI * 2);
     ctx2.fill();
     ctx2.strokeStyle = "#fff";
-    ctx2.lineWidth = 1.5;
+    ctx2.lineWidth = 1.4;
     ctx2.stroke();
   }
 
@@ -915,15 +995,16 @@ document.getElementById("btnReset").onclick = () => {
   });
   for (let i = 0; i < 100; i++) fluid.step(0.02);
   embers.length = 0;
+  reverseRiders = [];
   hero = null;
   heroTrail = [];
-  heroDone = false;
-  autoHeroReady = false;
-  nextAutoHeroAt = tSim + 6;
+  reverseRidersReleased = 0;
+  nextAutoRiderAt = tSim + 5;
+  bootRiderDone = false;
   emitAcc = 0;
-  stats.lofted = stats.land = stats.revLand = stats.againstIg = 0;
+  stats.lofted = stats.land = stats.downwindLand = stats.revLand = stats.againstIg = stats.downwindIg = 0;
   rebuildFuels();
-  setStory("Fire restarted. Waiting for reverse ground flow, then auto-releasing a hero from the fire…");
+  setStory("Restarted. Bulk embers will stream <b>with the wind</b> →. When reverse is ready, 1–2 yellow reverse riders try to fly back…");
 };
 document.getElementById("follow").addEventListener("change", (e) => { ui.follow = e.target.checked; });
 document.getElementById("pause").addEventListener("change", (e) => { ui.pause = e.target.checked; });
@@ -949,18 +1030,20 @@ document.getElementById("presets").onclick = (e) => {
 function updateMeta() {
   const rs = fluid.reverseStats();
   const el = document.getElementById("meta");
-  const hx = hero ? hero.x.toFixed(1) : "—";
-  const hy = hero ? hero.y.toFixed(1) : "—";
+  const flying = countFlyingRiders();
   const ph = hero ? (hero.landed ? "landed" : hero.phase) : "none";
   el.innerHTML =
     `t=<b>${tSim.toFixed(0)}s</b> · grid <b>${fluid.nx}×${fluid.ny}×${fluid.nz}</b><br>` +
     `reverse u<sub>min</sub>=<b class="rev">${rs.umin.toFixed(2)}</b> m/s · cells <b class="rev">${rs.nRev}</b><br>` +
-    `hero <b>${ph}</b> @ (${hx}, ${hy}) · against-wind ignitions <b class="${stats.againstIg ? "ok" : "hot"}">${stats.againstIg}</b>`;
+    `bulk sparks <b class="hot">${embers.filter((e) => !e.isHero).length}</b> with wind · ` +
+    `reverse riders <b class="rev">${flying}</b>/${MAX_REVERSE_RIDERS} (${ph})<br>` +
+    `downwind ignitions <b class="hot">${stats.downwindIg}</b> · ` +
+    `reverse ignitions <b class="${stats.againstIg ? "ok" : "hot"}">${stats.againstIg}</b>`;
 }
 
 const clock = new THREE.Clock();
 let lastMeta = 0;
-let bootHeroSpawned = false;
+let bootRiderDone = false;
 
 function frame() {
   requestAnimationFrame(frame);
@@ -968,34 +1051,33 @@ function frame() {
 
   if (!ui.pause) {
     tSim += dt;
-    // Two fluid substeps per frame
     for (let s = 0; s < 2; s++) fluid.step(dt / 2);
 
-    // Background embers from fire
-    emitAcc += ui.rate * dt * 0.4;
+    // Bulk stream continuously with free-stream wind
+    emitAcc += ui.rate * dt * 0.55;
     while (emitAcc >= 1) {
-      spawnEmber();
+      spawnEmber(); // bulk only
       emitAcc -= 1;
     }
 
     const rs = fluid.reverseStats();
-    autoHeroReady = rs.nRev > 50 && rs.umin < -0.8;
+    const reverseReady = rs.nRev > 50 && rs.umin < -0.8;
 
-    // First hero soon after reverse is ready
-    if (!bootHeroSpawned && autoHeroReady && tSim > 3) {
-      bootHeroSpawned = true;
-      spawnHero();
-    }
-    // Recurring auto hero if no success yet
-    if (
-      bootHeroSpawned &&
-      autoHeroReady &&
-      (!hero || hero.landed) &&
-      heroDone &&
-      tSim >= nextAutoHeroAt &&
-      stats.againstIg === 0
-    ) {
-      spawnHero();
+    // Auto: first reverse rider once reverse exists; second only if first failed
+    if (reverseReady && tSim > 4) {
+      if (!bootRiderDone && reverseRidersReleased === 0) {
+        bootRiderDone = true;
+        spawnHero();
+        nextAutoRiderAt = tSim + 10;
+      } else if (
+        reverseRidersReleased < MAX_REVERSE_RIDERS &&
+        countFlyingRiders() === 0 &&
+        stats.againstIg === 0 &&
+        tSim >= nextAutoRiderAt
+      ) {
+        spawnHero();
+        nextAutoRiderAt = tSim + 16;
+      }
     }
 
     stepEmbers(dt);
@@ -1012,14 +1094,16 @@ function frame() {
   updateHeroViz();
   updateOtherEmbers();
 
-  // Camera follow
+  // Camera: follow reverse rider when flying; else watch bulk stream going with wind
   if (ui.follow && hero && !hero.landed) {
     const ideal = new THREE.Vector3(hero.x - 7, Math.max(4, hero.y + 4), hero.z + 11);
     camera.position.lerp(ideal, 0.07);
     controls.target.lerp(new THREE.Vector3(hero.x, hero.y + 0.3, hero.z), 0.1);
-  } else if (ui.follow && !hero) {
-    // Look at reverse corridor while waiting
-    controls.target.lerp(new THREE.Vector3(4, 2, 0), 0.02);
+  } else if (ui.follow && (!hero || hero.landed)) {
+    // Wide view of bulk stream downwind + reverse corridor
+    controls.target.lerp(new THREE.Vector3(6, 2.5, 0), 0.025);
+    const ideal = new THREE.Vector3(-8, 11, 18);
+    camera.position.lerp(ideal, 0.02);
   }
 
   controls.update();
@@ -1035,11 +1119,11 @@ function frame() {
 const rs0 = fluid.reverseStats();
 setStory(
   rs0.nRev > 40
-    ? `Plume spun up · reverse already <span class="rev">u_min=${rs0.umin.toFixed(1)} m/s</span>. Releasing hero from the fire…`
-    : "Plume spinning up — reverse flow will appear as magenta under the lee, then a hero leaves the fire."
+    ? `Plume ready · reverse <span class="rev">u_min=${rs0.umin.toFixed(1)} m/s</span>. Bulk sparks stream <b>with the wind</b> →; 1–2 yellow reverse riders will try to fly back…`
+    : "Plume spinning up. You will see bulk embers go <b>with free-stream wind</b> →, then only 1–2 yellow pieces try reverse."
 );
 frame();
-console.log(BUILD, "fixed module crash · hero fire→reverse→ignition · reverse umin", rs0.umin, "nRev", rs0.nRev);
+console.log(BUILD, "bulk with wind · rare reverse riders · umin", rs0.umin, "nRev", rs0.nRev);
 </script>
 </body>
 </html>

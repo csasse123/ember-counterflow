@@ -6,7 +6,7 @@ out of the fire, into fire-induced **reverse ground flow**, and onto fuel
 
 Live: [csasse123.github.io/ember-counterflow](https://csasse123.github.io/ember-counterflow/)
 
-## v4.1 — follow the hero
+## v4.2 — bulk with the wind, rare reverse
 
 | Component | Method |
 |-----------|--------|
@@ -16,17 +16,20 @@ Live: [csasse123.github.io/ember-counterflow](https://csasse123.github.io/ember-
 | Embers | Lagrangian drag + gravity on **trilinear** \(\mathbf{u}\) |
 | Views | **Same field** in 3D (Three.js) and mid-plane side cut |
 
-Reverse flow is **not painted as a cartoon**. Magenta markers and arrows show
-cells where the **solver** finds streamwise \(u<0\) near the ground. The yellow
-**hero ember** is a tracked particle in that field.
+**Main story:** almost every firebrand flies **with free-stream wind** (→) and
+can spot downwind. Only **one or two** heavy pieces fall into fire-induced reverse
+ground flow and fly **backwards** — that is reverse ignition.
+
+Magenta markers are cells where the **solver** finds \(u<0\). Yellow balls are the
+rare reverse riders; small orange sparks are the bulk stream.
 
 ### What you should see
 
-1. Orange plume develops; magenta reverse appears in the **lee** of the fire.
-2. A yellow hero is released **from the fire** (auto, or the button).
-3. Camera follows: loft → fall into reverse → ride **against free-stream**.
-4. Green fuel in the reverse corridor ignites red on a successful against-wind landing.
-5. Side cut shows the same temperature, velocity arrows, and yellow path.
+1. Orange plume + many small sparks streaming **with the wind** downwind.
+2. Magenta reverse under the lee of the fire.
+3. **1–2 yellow reverse riders** fall into reverse and ride against free-stream.
+4. Green reverse fuel can ignite from those riders; brown downwind pads from the bulk.
+5. Side cut: same field, orange bulk dots, yellow reverse path.
 
 Details: [docs/PHYSICS.md](docs/PHYSICS.md).
 
