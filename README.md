@@ -1,47 +1,37 @@
 # Ember Counterflow
 
-**3D Navier–Stokes fire plume + Lagrangian firebrands** — follow one hot ember
-out of the fire, into fire-induced **reverse ground flow**, and onto fuel
-**against free-stream wind**.
+**Question:** can firebrands go *against* free-stream wind, and is there a real model for that?
+
+**Short answer:** reverse **air** under a wind-tilted fire is real CFD. Almost all **firebrand spotting** literature is **downwind**. Rare reverse-going brands can appear if particles sample fire-induced reverse inflow plus turbulence — not a separate operational “reverse spotting” product.
 
 Live: [csasse123.github.io/ember-counterflow](https://csasse123.github.io/ember-counterflow/)
 
-## v4.2 — bulk with the wind, rare reverse
+## v5 — literature-honest model
 
-| Component | Method |
-|-----------|--------|
-| Air | **3D incompressible NS**, projection (Chorin-style) |
-| Buoyancy | **Boussinesq** \(+g\beta_T T\,\hat{\mathbf{y}}\) |
-| Heat | Advection–diffusion + volumetric fire source \(Q^*\) |
-| Embers | Lagrangian drag + gravity on **trilinear** \(\mathbf{u}\) |
-| Views | **Same field** in 3D (Three.js) and mid-plane side cut |
+| Piece | Source |
+|-------|--------|
+| Air | 3D Boussinesq Navier–Stokes (projection), fire heat, buoyancy |
+| Brands | **Tarifa-style** Lagrangian quadratic drag + gravity on trilinear \(\mathbf{u}\) |
+| Rare reverse paths | Fire-induced reverse cells in NS + **Langevin subgrid turbulence** \(\mathbf{u}'\) |
+| Views | **Side cut is primary**; 3D is supporting context (same field) |
 
-**Main story:** almost every firebrand flies **with free-stream wind** (→) and
-can spot downwind. Only **one or two** heavy pieces fall into fire-induced reverse
-ground flow and fly **backwards** — that is reverse ignition.
-
-Magenta markers are cells where the **solver** finds \(u<0\). Yellow balls are the
-rare reverse riders; small orange sparks are the bulk stream.
+See [docs/PHYSICS.md](docs/PHYSICS.md) for references (Tarifa, Koo, Meroney reverse inflow, He et al. intermittent reverse, Farazmand wave spotting — still downwind).
 
 ### What you should see
 
-1. Orange plume + many small sparks streaming **with the wind** downwind.
-2. Magenta reverse under the lee of the fire.
-3. **1–2 yellow reverse riders** fall into reverse and ride against free-stream.
-4. Green reverse fuel can ignite from those riders; brown downwind pads from the bulk.
-5. Side cut: same field, orange bulk dots, yellow reverse path.
-
-Details: [docs/PHYSICS.md](docs/PHYSICS.md).
+1. **Orange bulk sparks** loft and go **with free-stream wind →** (standard spotting).  
+2. **Magenta** = solved reverse air in the lee (feeds the plume).  
+3. **Yellow trails / balls** = rare brands with \(v_x < 0\) (retro).  
+4. Green pads = reverse-corridor fuel; brown = downwind fuel.  
+5. Raise **σ_turb** or press **heavy brands** to increase reverse chance.
 
 ## Run locally
 
 ```bash
 cd ember-counterflow
 python3 -m http.server 8771
-# http://localhost:8771
+# http://localhost:8771  (hard-refresh)
 ```
-
-Requires ES modules (`solver3d.js` over HTTP, not `file://`). Hard-refresh after deploy.
 
 ## License
 
