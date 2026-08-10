@@ -1,42 +1,46 @@
 # Ember Counterflow
 
-**Why can a wildfire ember travel *against* the ambient wind?**
-
-v2 solves a real **2D Boussinesq Navier–Stokes** system (stream-function / vorticity)
-with a fire heat source. Reverse ground flow is an **emergent** solution — not a
-painted cartoon velocity field.
+**3D Navier–Stokes fire plume + Lagrangian firebrands** — explore why an ember can
+move **against** free-stream wind when the fire’s own buoyancy-driven flow
+reverses near the ground.
 
 Live: [csasse123.github.io/ember-counterflow](https://csasse123.github.io/ember-counterflow/)
 
-## Physics
+## v3 — physics first
 
-| Equation | Role |
-|----------|------|
-| \(\nabla\cdot\mathbf{u}=0\) | Incompressible continuity via \(\psi\) |
-| Vorticity transport + \(\nu\nabla^2\omega\) | Momentum (NS) |
-| \(g\beta_T\,\partial_x T\) | Boussinesq baroclinic torque (buoyancy) |
-| Heat advection–diffusion + \(Q^*\) | Fire as volumetric heat source |
-| Lagrangian drag + gravity | Embers on the **NS velocity field** |
+| Component | Method |
+|-----------|--------|
+| Air | **3D incompressible NS**, projection (Chorin-style) |
+| Buoyancy | **Boussinesq** \(+g\beta_T T\,\hat{\mathbf{y}}\) |
+| Heat | Advection–diffusion + volumetric fire source \(Q^*\) |
+| Embers | Lagrangian drag + gravity on **trilinear** \(\mathbf{u}\) |
 
-Same structure as simplified plume CFD / FDS-class low-Mach thinking (2D, teaching scale).
+Reverse flow is **not painted**. Cyan markers show cells where the **solver**
+finds streamwise \(u<0\) near the ground.
 
-See [docs/PHYSICS.md](docs/PHYSICS.md).
+Same equation class as simplified fire CFD / FDS low-Mach thinking (coarse
+browser grid + eddy viscosity). Details: [docs/PHYSICS.md](docs/PHYSICS.md).
 
-## How to see reverse spotting
+## Use
 
-1. Preset **Demo reverse** (moderate wind, strong fire).  
-2. Wait ~10–20 s for the plume and in-draft to develop.  
-3. Cyan region = **u &lt; 0** (against free-stream).  
-4. Watch upwind (green) fuel ignite.
+1. Open the page; wait **15–40 s** for the plume to develop.  
+2. Preset **Demo reverse** (moderate wind, strong fire).  
+3. Watch **u_min** and reverse cells in the status panel.  
+4. Embers loft, fall, and may land **upwind** if reverse cells exist.  
 
-If **Wind wins** (high \(U_w\)), reverse pockets disappear — correct physically.
+**Wind wins** → reverse cells should shrink (physical).
 
-## Run
+Drag to orbit, scroll to zoom.
+
+## Run locally
 
 ```bash
 cd ember-counterflow
 python3 -m http.server 8770
+# http://localhost:8770
 ```
+
+Requires ES modules (`solver3d.js` served over HTTP, not `file://`).
 
 ## License
 

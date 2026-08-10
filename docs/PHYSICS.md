@@ -1,89 +1,102 @@
-# How reverse-wind embers should be simulated (Navier–Stokes)
+# 3D Navier–Stokes for reverse-wind firebrands
 
-## Why the v1.0 “entrainment cartoon” failed
+## Your critique (correct)
 
-A hand-built velocity field (ambient wind + analytic sink + weak vortex) does **not**
-solve mass/momentum consistently. Embers then mostly follow the free-stream wind
-because the reverse pocket is too weak, too shallow, or dynamically inconsistent.
-Your observation was correct: **without a real flow solution, reverse transport
-does not appear.**
+A 2D reduced model or analytic “in-draft cartoon” is **not** an acceptable stand-in
+for fire–atmosphere coupling. Reverse ember transport is a **solution of the
+momentum equations with buoyancy**, not a painted velocity field. If embers always
+follow free-stream wind, the flow solver is inadequate — full stop.
 
-## What real models solve
+## What production fire CFD actually solves
 
-Coupled fire–atmosphere and firebrand codes (NIST **FDS**, LANL **FIRETEC** /
-HIGRAD, WRF-SFIRE class systems) integrate the **Navier–Stokes equations** with
-**buoyancy** from heat release, typically:
+Codes such as NIST **FDS** (Fire Dynamics Simulator) integrate a **low-Mach-number
+form of the Navier–Stokes equations** for buoyancy-driven fire flow (acoustic waves
+filtered; density varies through equation of state / temperature). Related wildfire
+models (FIRETEC/HIGRAD, WRF-SFIRE class) couple similar momentum/energy equations
+to combustion and fuel.
 
-### Continuity (low-Mach / incompressible limit)
+### Continuity (low-Mach / anelastic-style)
+
+Mass conservation with slow density change, often written so that a **pressure
+Poisson equation** enforces a divergence constraint on the velocity (projection
+method). In the **Boussinesq** teaching limit used here:
 
 \[
-\nabla \cdot \mathbf{u} = 0
+\nabla\cdot\mathbf{u}=0
 \]
-
-(or a weakly compressible form that filters acoustic waves — FDS “low Mach number” NS).
 
 ### Momentum
 
 \[
-\frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u}\cdot\nabla)\mathbf{u}
-= -\frac{1}{\rho_0}\nabla p' + \nu\nabla^2\mathbf{u}
-+ \mathbf{g}\,\beta_T\,(T - T_0) + \mathbf{f}_{\mathrm{drag,fuel}}
+\frac{\partial\mathbf{u}}{\partial t}
++(\mathbf{u}\cdot\nabla)\mathbf{u}
+=
+-\nabla p
++\nu\nabla^2\mathbf{u}
++\mathbf{g}\,\beta_T\,(T-T_0)
 \]
 
-- \(p'\): pressure deviation  
-- \(\nu\): kinematic viscosity (or eddy viscosity in LES/RANS)  
-- \(\beta_T\): thermal expansion (Boussinesq)  
-- Last term: optional multiphase drag (vegetation)
+- \(p\): kinematic pressure (or \(p'/\rho_0\))
+- \(\nu\): kinematic viscosity (**eddy viscosity** in this browser LES-like scale)
+- last term: **Boussinesq buoyancy** (only vertical component)
 
 ### Energy / temperature
 
 \[
-\frac{\partial T}{\partial t} + \mathbf{u}\cdot\nabla T
-= \kappa\nabla^2 T + \frac{Q'''(\mathbf{x},t)}{\rho c_p}
+\frac{\partial T}{\partial t}
++\mathbf{u}\cdot\nabla T
+=
+\kappa\nabla^2 T
++\dot{Q}(\mathbf{x},t)
 \]
 
-Fire = localized heat source \(Q'''\) (and/or combustion chemistry in full models).
+Fire = localized heat release \(\dot{Q}\) (full FDS also carries mixture fraction /
+combustion; we inject heat as the driving source, same role).
 
 ### Firebrands (Lagrangian)
 
 \[
-m_p\frac{d\mathbf{v}_p}{dt}
-= \tfrac12\rho C_D A_p\,|\mathbf{u}-\mathbf{v}_p|(\mathbf{u}-\mathbf{v}_p)
-+ m_p\mathbf{g}
+m\frac{d\mathbf{v}}{dt}
+=
+\tfrac12\rho C_D A\,|\mathbf{u}-\mathbf{v}|(\mathbf{u}-\mathbf{v})
++m\mathbf{g}
 \]
 
-coupled to the **instantaneous** \(\mathbf{u}(\mathbf{x},t)\) from NS — including
-recirculation cells that reverse near the ground.
+with \(\mathbf{u}\) **trilinearly interpolated from the 3D NS field** — including
+any reverse-flow cells the PDE solution produces.
 
-## 2D teaching solver used in this app (v2)
+## Numerical method in this lab (v3)
 
-**Stream-function / vorticity** form of 2D incompressible NS + Boussinesq heat
-(same family as many plume DNS/LES cores, reduced to 2D for the browser):
+**3D fractional-step / projection method** (Chorin-style):
 
-1. Vorticity transport  
-   \(\omega_t + \mathbf{u}\cdot\nabla\omega = \nu\nabla^2\omega + g\beta_T\,\partial_x T\)
-2. Poisson  
-   \(\nabla^2\psi = -\omega\), \(\;u=\partial_y\psi,\; v=-\partial_x\psi\)
-3. Temperature advection–diffusion + fire heat source  
-4. Embers integrated on the interpolated NS velocity
+1. Advect–diffuse velocity + buoyancy → intermediate \(\mathbf{u}^*\)  
+2. Solve \(\nabla^2\phi=\nabla\cdot\mathbf{u}^*/\Delta t\) (Jacobi/Gauss–Seidel)  
+3. Project \(\mathbf{u}^{n+1}=\mathbf{u}^*-\Delta t\nabla\phi\)  
+4. Advect–diffuse temperature + fire source  
 
-**Reverse flow** appears when buoyancy-driven in-draft exceeds ambient wind near
-the ground on the lee of the plume — an emergent solution of NS, not a painted
-region.
+**Grid:** collocated Cartesian (teaching; FDS uses staggered).  
+**Resolution:** coarse (browser real-time), but **equations and 3D geometry are real** —
+not a 2D stream-function toy and not a display hack.
 
-## Fidelity ladder
+## When reverse flow appears
 
-| Level | Method | Reverse flow? |
-|-------|--------|----------------|
-| Cartoon sinks | Analytic velocity | Usually no |
-| **This lab** | 2D Boussinesq NS (SF–vorticity) | Yes, when \(Q\) vs \(U_w\) allows |
-| FDS LES | 3D low-Mach NS + combustion | Yes, detailed |
-| FIRETEC | Multiphase wildfire LES | Yes, fuel-resolved |
+Buoyant plume rises → continuity requires near-ground **in-draft**. On the **lee**
+of a wind-tilted plume, in-draft can **oppose** free-stream wind. That is an
+**emergent** region with \(u_{\mathrm{stream}}<0\). Embers that fall there can
+move **upwind** relative to the free stream.
+
+If free-stream wind is too strong, reverse cells vanish — that is physical, not a bug.
+
+## Honesty bound
+
+This is **not** a substitute for FDS/FIRETEC validation cases. It **is** a genuine
+3D NS + buoyancy + Lagrangian ember integration suitable for exploring the mechanism
+in-browser. Grid and eddy viscosity are limited by WebGL real-time cost.
 
 ## Reading
 
-- McGrattan et al., NIST **Fire Dynamics Simulator** technical reference (low-Mach NS).  
+- McGrattan et al., *FDS Technical Reference Guide* (low-Mach NS for fire).  
 - Baum, McGrattan — fire plume LES.  
 - Koo et al. — firebrand transport reviews.  
-- Linn et al. — FIRETEC coupled fire–atmosphere.  
-- Classical plume entrainment: Morton–Taylor–Turner (motivation for in-draft).
+- Linn et al. — FIRETEC.  
+- Projection methods: Chorin; standard CFD texts.
