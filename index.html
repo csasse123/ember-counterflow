@@ -3,157 +3,194 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ember Counterflow · 3D Navier–Stokes</title>
+<title>Ember Counterflow · can embers go against the wind?</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #07090e; --panel: rgba(10,14,22,0.94); --line: rgba(251,146,60,0.3);
-    --ink: #f1e8df; --accent: #fb923c; --cool: #38bdf8; --ok: #4ade80;
+    --bg: #0c0e12; --panel: #12161e; --line: rgba(251,146,60,0.28);
+    --ink: #f5ebe0; --muted: #9c9084; --accent: #fb923c; --ok: #4ade80; --wind: #c4b5fd;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: "DM Sans", system-ui, sans-serif; overflow: hidden; }
-  #wrap { display: grid; grid-template-columns: 1fr min(370px, 40vw); height: 100%; }
-  @media (max-width: 960px) {
-    #wrap { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-    aside { max-height: 42vh; overflow: auto; }
+  #app {
+    display: grid;
+    grid-template-columns: 1fr min(340px, 36vw);
+    grid-template-rows: 1fr 200px;
+    grid-template-areas: "view side" "cut side";
+    height: 100%;
   }
-  #view { position: relative; min-height: 0; }
-  canvas#c { display: block; width: 100%; height: 100%; }
-  .hud { position: absolute; left: 14px; top: 12px; max-width: 46ch; pointer-events: none; }
+  @media (max-width: 900px) {
+    #app {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 160px minmax(200px, 38vh);
+      grid-template-areas: "view" "cut" "side";
+    }
+  }
+  #view { grid-area: view; position: relative; min-height: 0; }
+  #cut { grid-area: cut; position: relative; border-top: 1px solid var(--line); background: #0a0c10; }
+  aside { grid-area: side; background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding: 12px 14px 18px; }
+  canvas#c3, canvas#c2 { display: block; width: 100%; height: 100%; }
+  .hud {
+    position: absolute; left: 12px; top: 10px; right: 12px; max-width: 42ch; pointer-events: none; z-index: 2;
+  }
   .badge {
-    display: inline-block; font: 700 0.6rem/1 "JetBrains Mono", monospace; letter-spacing: 0.12em;
+    display: inline-block; font: 700 0.58rem/1 "JetBrains Mono", monospace; letter-spacing: 0.12em;
     text-transform: uppercase; color: #1a0800; background: linear-gradient(90deg,#fb923c,#fbbf24);
-    border-radius: 999px; padding: 4px 10px; margin-bottom: 8px;
+    border-radius: 999px; padding: 4px 9px; margin-bottom: 6px;
   }
-  .hud h1 { font: 700 1.3rem/1.15 "Space Grotesk", system-ui, sans-serif; text-shadow: 0 2px 18px #000; }
-  .hud p { margin-top: 6px; font-size: 0.78rem; color: #c4b5a5; line-height: 1.45; text-shadow: 0 1px 10px #000; }
-  .build { position: absolute; right: 12px; bottom: 10px; font: 600 0.58rem "JetBrains Mono", monospace; color: #4b5563; }
-  aside { background: var(--panel); border-left: 1px solid var(--line); padding: 12px 14px 18px; overflow: auto; }
+  .hud h1 { font: 700 1.2rem/1.15 "Space Grotesk", system-ui, sans-serif; text-shadow: 0 2px 14px #000; }
+  .hud p { margin-top: 5px; font-size: 0.76rem; color: #d4c4b0; line-height: 1.4; text-shadow: 0 1px 8px #000; }
+  .cut-label {
+    position: absolute; left: 10px; top: 6px; z-index: 2;
+    font: 600 0.62rem "JetBrains Mono", monospace; color: #fb923c;
+    background: rgba(0,0,0,0.55); padding: 3px 8px; border-radius: 6px;
+  }
+  .legend {
+    position: absolute; left: 10px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 2; pointer-events: none;
+  }
+  .legend i {
+    font: 600 0.6rem "JetBrains Mono", monospace; font-style: normal;
+    padding: 3px 7px; border-radius: 6px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08);
+  }
+  .build { position: absolute; right: 10px; bottom: 8px; font: 600 0.55rem "JetBrains Mono", monospace; color: #4b5563; z-index: 2; }
   aside h2 {
-    font: 700 0.64rem/1 "JetBrains Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase;
+    font: 700 0.62rem/1 "JetBrains Mono", monospace; letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--accent); margin: 12px 0 8px;
   }
-  aside h2:first-child { margin-top: 0; }
-  .row { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; font-size: 0.74rem; color: #d4c4b0; margin-bottom: 7px; }
-  .row.full { grid-template-columns: 1fr; }
-  input[type="range"] { width: 100%; accent-color: var(--accent); }
-  .val { font: 600 0.68rem "JetBrains Mono", monospace; color: #fdba74; min-width: 3.4rem; text-align: right; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-  .chips button, .btn {
-    border: 1px solid var(--line); background: rgba(28,18,10,0.95); color: #e7d5c0;
-    border-radius: 999px; padding: 6px 10px; font-size: 0.7rem; cursor: pointer; font-family: inherit;
+  aside h2:first-of-type { margin-top: 0; }
+  .story {
+    font-size: 0.74rem; line-height: 1.5; color: #c4b5a5; margin-bottom: 10px;
+    padding: 10px; border-radius: 10px; background: rgba(0,0,0,0.35); border: 1px solid rgba(251,146,60,0.18);
   }
-  .chips button.on { border-color: var(--accent); color: #ffedd5; background: rgba(154,52,18,0.4); }
-  .btn.primary { width: 100%; margin-top: 6px; font-weight: 700; background: linear-gradient(160deg,#ea580c,#9a3412); border-color: #fb923c; }
-  .meta {
-    font: 500 0.64rem/1.5 "JetBrains Mono", monospace; color: #a89a8c;
+  .story b { color: #ffedd5; }
+  .story ol { margin: 6px 0 0 1.1rem; }
+  .story li { margin-bottom: 4px; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; font-size: 0.74rem; color: #d4c4b0; margin-bottom: 8px; }
+  .row.full { grid-template-columns: 1fr; }
+  .row .hint { grid-column: 1 / -1; font-size: 0.62rem; color: #7a6f64; margin-top: -4px; margin-bottom: 4px; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .val { font: 600 0.68rem "JetBrains Mono", monospace; color: #fdba74; min-width: 3.2rem; text-align: right; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chips button, .btn {
+    border: 1px solid var(--line); background: #1a140f; color: #e7d5c0;
+    border-radius: 999px; padding: 7px 11px; font-size: 0.7rem; cursor: pointer; font-family: inherit;
+  }
+  .chips button.on { border-color: var(--accent); background: rgba(154,52,18,0.45); color: #ffedd5; }
+  .btn.primary { width: 100%; font-weight: 700; background: linear-gradient(160deg,#ea580c,#9a3412); border-color: #fb923c; margin-top: 6px; }
+  .status {
+    font: 500 0.66rem/1.55 "JetBrains Mono", monospace; color: #a89a8c;
     background: rgba(0,0,0,0.4); border-radius: 10px; padding: 8px 10px; margin-top: 8px;
   }
-  .meta b { color: #ffedd5; } .meta .ok { color: #4ade80; } .meta .cool { color: #38bdf8; } .meta .hot { color: #fb923c; }
-  .help {
-    font-size: 0.68rem; line-height: 1.5; color: #b5a698; margin-top: 8px; padding: 8px 10px;
-    border-radius: 10px; border: 1px solid rgba(251,146,60,0.15); background: rgba(16,10,6,0.7);
-  }
-  .help b { color: #fed7aa; }
-  label.check { display: flex; gap: 8px; align-items: center; font-size: 0.74rem; color: #d4c4b0; margin-bottom: 5px; cursor: pointer; }
-  .warn {
-    font-size: 0.68rem; line-height: 1.4; color: #fcd34d; background: rgba(120,53,15,0.35);
-    border: 1px solid rgba(251,191,36,0.3); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px;
-  }
+  .status b { color: #ffedd5; } .status .ok { color: #4ade80; } .status .hot { color: #fb923c; } .status .wind { color: #c4b5fd; }
+  .status .rev { color: #e879f9; }
+  details { margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
+  details summary { cursor: pointer; color: #9c9084; font-size: 0.72rem; font-weight: 600; }
+  label.check { display: flex; gap: 8px; align-items: center; font-size: 0.72rem; color: #c4b5a5; margin: 5px 0; cursor: pointer; }
 </style>
 </head>
 <body>
-<div id="wrap">
+<div id="app">
   <div id="view">
-    <canvas id="c"></canvas>
+    <canvas id="c3"></canvas>
     <div class="hud">
-      <div class="badge">3D Navier–Stokes · projection method</div>
-      <h1>Ember Counterflow</h1>
+      <div class="badge">3D physics · not a cartoon wind</div>
+      <h1>Can an ember go against the wind?</h1>
       <p>
-        Real <b style="color:#fb923c">3D incompressible NS + Boussinesq buoyancy + heat</b>,
-        then Lagrangian firebrands on that field. Reverse flow is not drawn —
-        it only appears if the PDE solution produces \(u&lt;0\).
+        <b style="color:#fb923c">Orange / yellow</b> = hot fire and smoke heat.
+        <b style="color:#e879f9">Magenta arrows</b> = air going <em>against</em> the free-stream wind (if the equations produce it).
+        <b style="color:#fbbf24">Gold sparks</b> = embers. Watch the <b>side view below</b> — it is easier to read.
       </p>
     </div>
-    <div class="build" id="build">v3.0.0</div>
+    <div class="legend">
+      <i style="color:#fb923c">● fire heat</i>
+      <i style="color:#fbbf24">● embers</i>
+      <i style="color:#c4b5fd">→ free-stream wind</i>
+      <i style="color:#e879f9">→ reverse / counter-flow</i>
+      <i style="color:#4ade80">■ upwind fuel</i>
+    </div>
+    <div class="build" id="build">v3.1.0</div>
+  </div>
+  <div id="cut">
+    <div class="cut-label">SIDE VIEW (cut through fire) — easiest place to see reverse ground flow</div>
+    <canvas id="c2"></canvas>
   </div>
   <aside>
-    <div class="warn">
-      Physics-first 3D CFD in the browser: coarse grid, eddy viscosity. Equations match
-      Boussinesq / FDS-class structure — not a fake wind cartoon. Wait ~15–40 s for the plume
-      to spin up before judging reverse flow.
+    <div class="story">
+      <b>What you are watching</b>
+      <ol>
+        <li><b>Purple wind</b> enters from the left (free-stream).</li>
+        <li><b>Orange heat</b> rises as a plume (hot air is lighter).</li>
+        <li>Rising air must be replaced → ground air is pulled toward the fire.</li>
+        <li>When that pull fights a strong wind, <b style="color:#e879f9">magenta reverse flow</b> can appear near the ground.</li>
+        <li>Embers can ride that reverse flow and land on <b style="color:#4ade80">green upwind fuel</b>.</li>
+      </ol>
+      Your intuition — <b>strong wind + strong rising heat</b> makes complex counter-flows — is the right regime. Calm air rarely does this drama.
     </div>
 
-    <h2>Ambient wind</h2>
-    <label class="row full">U<sub>w</sub> free-stream (m/s)
-      <input id="wind" type="range" min="0" max="6" step="0.05" value="1.4" />
-    </label>
-    <div class="row"><span>Inlet +x</span><span class="val" id="windVal">1.40</span></div>
-
-    <h2>Fire (heat source)</h2>
-    <label class="row full">Heat release Q*
-      <input id="Q" type="range" min="0.5" max="6" step="0.05" value="3.2" />
-    </label>
-    <div class="row"><span>Drives buoyancy</span><span class="val" id="QVal">3.20</span></div>
-    <label class="row full">Fire radius scale (m)
-      <input id="fireW" type="range" min="1" max="5" step="0.1" value="2.4" />
-    </label>
-    <div class="row"><span>Source size</span><span class="val" id="fireWVal">2.4</span></div>
-
-    <h2>Fluid (NS parameters)</h2>
-    <label class="row full">Eddy viscosity ν
-      <input id="nu" type="range" min="0.02" max="0.25" step="0.005" value="0.07" />
-    </label>
-    <div class="row"><span>Momentum diffusion</span><span class="val" id="nuVal">0.070</span></div>
-    <label class="row full">Thermal diffusivity κ
-      <input id="kappa" type="range" min="0.02" max="0.3" step="0.005" value="0.09" />
-    </label>
-    <div class="row"><span>Heat diffusion</span><span class="val" id="kappaVal">0.090</span></div>
-    <label class="row full">Buoyancy gβ<sub>T</sub>
-      <input id="buoy" type="range" min="1" max="20" step="0.1" value="9.5" />
-    </label>
-    <div class="row"><span>Boussinesq strength</span><span class="val" id="buoyVal">9.5</span></div>
-
-    <h2>Embers</h2>
-    <label class="row full">Diameter (mm)
-      <input id="diam" type="range" min="1" max="14" step="0.5" value="4.5" />
-    </label>
-    <div class="row"><span></span><span class="val" id="diamVal">4.5</span></div>
-    <label class="row full">Emit rate
-      <input id="rate" type="range" min="0" max="40" step="1" value="14" />
-    </label>
-    <div class="row"><span>/ s</span><span class="val" id="rateVal">14</span></div>
-    <label class="row full">Glow lifetime (s)
-      <input id="life" type="range" min="2" max="16" step="0.5" value="10" />
-    </label>
-    <div class="row"><span></span><span class="val" id="lifeVal">10.0</span></div>
-    <label class="row full">Ignition threshold
-      <input id="moisture" type="range" min="0.2" max="1.8" step="0.05" value="0.45" />
-    </label>
-    <div class="row"><span>Fuel resistance</span><span class="val" id="moistureVal">0.45</span></div>
-
-    <h2>View</h2>
-    <label class="check"><input type="checkbox" id="showTemp" checked /> temperature volume</label>
-    <label class="check"><input type="checkbox" id="showRev" checked /> reverse-flow markers</label>
-    <label class="check"><input type="checkbox" id="showVec" checked /> velocity probes</label>
-    <label class="check"><input type="checkbox" id="pause" /> pause</label>
-
+    <h2>Scenario (start here)</h2>
     <div class="chips" id="presets">
-      <button type="button" data-p="demo" class="on">Demo reverse</button>
-      <button type="button" data-p="windy">Wind wins</button>
-      <button type="button" data-p="hot">Hot calm</button>
+      <button type="button" data-p="storm" class="on">Strong wind + strong fire</button>
+      <button type="button" data-p="calm">Calm (little reverse)</button>
+      <button type="button" data-p="windyOnly">Wind only (no reverse)</button>
     </div>
-    <button type="button" class="btn primary" id="btnReset">Reset NS + embers</button>
+    <p style="font-size:0.68rem;color:#9c9084;line-height:1.4;margin-bottom:8px">
+      Use the first button. Wait <b style="color:#fdba74">20–40 seconds</b> — the plume has to spin up.
+    </p>
 
-    <div class="meta" id="meta">Booting 3D NS…</div>
-    <div class="help">
-      <b>Solved every frame:</b> 3D projection-method Navier–Stokes + heat equation
-      (Boussinesq buoyancy). Grid shown in status. Embers = Lagrangian particles on
-      trilinear \(\mathbf{u}\).<br><br>
-      <b>Drag</b> to orbit · <b>scroll</b> zoom. Cyan boxes = cells with streamwise
-      \(u&lt;0\) near ground (solver output).<br><br>
-      Docs: <code>docs/PHYSICS.md</code> (FDS-class equation structure).
+    <h2>Three main knobs</h2>
+    <label class="row full">1 · How hard the free-stream wind blows
+      <input id="wind" type="range" min="0.2" max="6" step="0.05" value="2.8" />
+    </label>
+    <div class="row"><span class="hint">Left → right. Stronger wind tilts the plume and can help form a lee recirculation — or wipe reverse flow if too strong.</span></div>
+    <div class="row"><span>Wind</span><span class="val" id="windVal">2.8 m/s</span></div>
+
+    <label class="row full">2 · How hot / strong the fire is
+      <input id="Q" type="range" min="0.5" max="6" step="0.05" value="3.8" />
+    </label>
+    <div class="row"><span class="hint">“Pyrothermal” strength. Stronger fire → stronger rising plume → stronger ground in-draft.</span></div>
+    <div class="row"><span>Fire intensity</span><span class="val" id="QVal">3.8</span></div>
+
+    <label class="row full">3 · How “jumpy” the air is (turbulent mixing)
+      <input id="nu" type="range" min="0.03" max="0.2" step="0.005" value="0.055" />
+    </label>
+    <div class="row"><span class="hint">Eddy viscosity. Lower = sharper, more structured swirls. Higher = smoother, mixed-out flow.</span></div>
+    <div class="row"><span>Turbulent mixing</span><span class="val" id="nuVal">0.055</span></div>
+
+    <button type="button" class="btn primary" id="btnReset">Restart simulation</button>
+
+    <details>
+      <summary>More controls (embers, expert)</summary>
+      <label class="row full" style="margin-top:8px">Buoyancy strength
+        <input id="buoy" type="range" min="2" max="18" step="0.1" value="11" />
+      </label>
+      <div class="row"><span>How hard heat pushes air up</span><span class="val" id="buoyVal">11</span></div>
+      <label class="row full">Ember size (mm)
+        <input id="diam" type="range" min="1" max="12" step="0.5" value="4" />
+      </label>
+      <div class="row"><span></span><span class="val" id="diamVal">4.0</span></div>
+      <label class="row full">Embers per second
+        <input id="rate" type="range" min="0" max="30" step="1" value="12" />
+      </label>
+      <div class="row"><span></span><span class="val" id="rateVal">12</span></div>
+      <label class="row full">How long embers stay hot (s)
+        <input id="life" type="range" min="2" max="16" step="0.5" value="10" />
+      </label>
+      <div class="row"><span></span><span class="val" id="lifeVal">10</span></div>
+      <label class="row full">How hard fuel is to light
+        <input id="moisture" type="range" min="0.2" max="1.5" step="0.05" value="0.4" />
+      </label>
+      <div class="row"><span></span><span class="val" id="moistureVal">0.40</span></div>
+      <label class="check"><input type="checkbox" id="pause" /> Pause</label>
+    </details>
+
+    <div class="status" id="meta">Starting…</div>
+    <div class="story" style="margin-top:10px">
+      <b>Can this even be modeled?</b> Yes. Full wildfire codes (e.g. NIST FDS, FIRETEC-class LES)
+      solve 3D Navier–Stokes with buoyancy and track firebrands as particles. Your picture —
+      strong wind + strong rising heat → turbulent counter-flows — is exactly fire–atmosphere
+      coupling. This page runs a <b>coarse but real 3D NS</b> in the browser so you can see the
+      idea; it is not a firefighter forecast tool.
     </div>
   </aside>
 </div>
@@ -171,198 +208,184 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Fluid3D } from "./solver3d.js";
 
-const BUILD = "v3.0.0";
+const BUILD = "v3.1.0";
 document.getElementById("build").textContent = BUILD;
 
-// --- Fluid ---
-// Coarse but fully 3D; increase when hardware allows
+// -------------------------------------------------------------------------
+// 3D fluid (physics). Defaults match “strong wind + strong fire” intuition.
+// -------------------------------------------------------------------------
 const fluid = new Fluid3D({
-  nx: 40, ny: 24, nz: 40,
-  Lx: 56, Ly: 22, Lz: 44,
-  x0: -16, z0: -22,
+  nx: 40, ny: 24, nz: 36,
+  Lx: 56, Ly: 22, Lz: 40,
+  x0: -16, z0: -20,
+});
+// Storm-like defaults
+Object.assign(fluid.params, {
+  wind: 2.8, Q: 3.8, fireW: 2.6, nu: 0.055, kappa: 0.09, buoy: 11,
 });
 
-// Warm-start: several NS steps so plume exists
-for (let i = 0; i < 40; i++) fluid.step(0.025);
+for (let i = 0; i < 50; i++) fluid.step(0.022);
 
-// --- Scene ---
-const canvas = document.getElementById("c");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+// -------------------------------------------------------------------------
+// Three.js — simple readable scene (orange fire, gold embers, magenta reverse)
+// -------------------------------------------------------------------------
+const c3 = document.getElementById("c3");
+const renderer = new THREE.WebGLRenderer({ canvas: c3, antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setClearColor(0x0a0c12, 1);
+renderer.setClearColor(0x0c0e14, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0a0c12, 0.012);
-const camera = new THREE.PerspectiveCamera(50, 1, 0.2, 200);
-camera.position.set(-28, 18, 32);
-
-const controls = new OrbitControls(camera, canvas);
-controls.target.set(2, 3, 0);
+const camera = new THREE.PerspectiveCamera(48, 1, 0.2, 200);
+camera.position.set(-22, 14, 28);
+const controls = new OrbitControls(camera, c3);
+controls.target.set(4, 2.5, 0);
 controls.enableDamping = true;
-controls.dampingFactor = 0.06;
 
-scene.add(new THREE.AmbientLight(0x8899aa, 0.45));
-const sun = new THREE.DirectionalLight(0xffe8d0, 1.1);
-sun.position.set(20, 40, 10);
+scene.add(new THREE.AmbientLight(0x99aabb, 0.5));
+const sun = new THREE.DirectionalLight(0xffe8cc, 1.15);
+sun.position.set(15, 35, 12);
 scene.add(sun);
 
 // Ground
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(fluid.Lx * 1.2, fluid.Lz * 1.2),
-  new THREE.MeshStandardMaterial({ color: 0x1a2418, roughness: 0.95 })
+  new THREE.PlaneGeometry(fluid.Lx * 1.15, fluid.Lz * 1.15),
+  new THREE.MeshStandardMaterial({ color: 0x1c2419, roughness: 0.95 })
 );
 ground.rotation.x = -Math.PI / 2;
-ground.position.set(fluid.x0 + fluid.Lx * 0.5, 0, fluid.z0 + fluid.Lz * 0.5);
+ground.position.set(fluid.x0 + fluid.Lx / 2, 0, fluid.z0 + fluid.Lz / 2);
 scene.add(ground);
 
-// Domain wire box
-{
-  const box = new THREE.Box3(
-    new THREE.Vector3(fluid.x0, 0, fluid.z0),
-    new THREE.Vector3(fluid.x0 + fluid.Lx, fluid.Ly, fluid.z0 + fluid.Lz)
-  );
-  scene.add(new THREE.Box3Helper(box, 0x334155));
+// Big free-stream wind arrow (left → right)
+function makeWindArrow() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xc4b5fd });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 14, 8), mat);
+  shaft.rotation.z = Math.PI / 2;
+  shaft.position.set(-6, 8, 12);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.4, 10), mat);
+  head.rotation.z = -Math.PI / 2;
+  head.position.set(1.5, 8, 12);
+  g.add(shaft, head);
+  // label sprite
+  const cv = document.createElement("canvas");
+  cv.width = 512; cv.height = 96;
+  const cx = cv.getContext("2d");
+  cx.fillStyle = "rgba(0,0,0,0.5)";
+  cx.fillRect(0, 0, 512, 96);
+  cx.fillStyle = "#c4b5fd";
+  cx.font = "600 36px DM Sans, sans-serif";
+  cx.fillText("FREE-STREAM WIND →", 24, 58);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+  sp.scale.set(10, 1.9, 1);
+  sp.position.set(-6, 9.8, 12);
+  g.add(sp);
+  return g;
 }
+scene.add(makeWindArrow());
 
-// Temperature point cloud
-const nProbe = fluid.nx * fluid.ny * fluid.nz;
-const tempPos = new Float32Array(nProbe * 3);
-const tempCol = new Float32Array(nProbe * 3);
-const tempGeo = new THREE.BufferGeometry();
-tempGeo.setAttribute("position", new THREE.BufferAttribute(tempPos, 3));
-tempGeo.setAttribute("color", new THREE.BufferAttribute(tempCol, 3));
-const tempPts = new THREE.Points(
-  tempGeo,
-  new THREE.PointsMaterial({
-    size: 0.55, vertexColors: true, transparent: true, opacity: 0.55,
-    depthWrite: false, sizeAttenuation: true,
-  })
-);
-scene.add(tempPts);
+// Temperature as ORANGE/RED only (never blue)
+const STEP = 1;
+const nVis = Math.ceil(fluid.nx / STEP) * Math.ceil(fluid.ny / STEP) * Math.ceil(fluid.nz / STEP);
+const tPos = new Float32Array(nVis * 3);
+const tCol = new Float32Array(nVis * 3);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute("position", new THREE.BufferAttribute(tPos, 3));
+tGeo.setAttribute("color", new THREE.BufferAttribute(tCol, 3));
+const heatPts = new THREE.Points(tGeo, new THREE.PointsMaterial({
+  size: 0.7, vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false, sizeAttenuation: true,
+}));
+scene.add(heatPts);
 
-// Reverse-flow markers (instanced boxes)
-const MAX_REV = 4000;
-const revMesh = new THREE.InstancedMesh(
-  new THREE.BoxGeometry(fluid.dx * 0.85, fluid.dy * 0.85, fluid.dz * 0.85),
-  new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55 }),
-  MAX_REV
-);
-revMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-scene.add(revMesh);
-
-// Velocity probes
-const MAX_VEC = 800;
-const vecGroup = new THREE.Group();
-scene.add(vecGroup);
-const vecGeom = new THREE.ConeGeometry(0.12, 0.55, 5);
-const vecMat = new THREE.MeshBasicMaterial({ color: 0xa78bfa });
-const vecPool = [];
-for (let i = 0; i < MAX_VEC; i++) {
-  const m = new THREE.Mesh(vecGeom, vecMat.clone());
+// Reverse flow: MAGENTA cones (not blue boxes)
+const MAX_REV = 600;
+const revGroup = new THREE.Group();
+scene.add(revGroup);
+const revPool = [];
+const revGeo = new THREE.ConeGeometry(0.2, 0.7, 6);
+for (let i = 0; i < MAX_REV; i++) {
+  const m = new THREE.Mesh(revGeo, new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.85 }));
   m.visible = false;
-  vecGroup.add(m);
-  vecPool.push(m);
+  revGroup.add(m);
+  revPool.push(m);
 }
 
-// Embers
-const MAX_E = 2500;
-const emberPos = new Float32Array(MAX_E * 3);
-const emberCol = new Float32Array(MAX_E * 3);
-const emberGeo = new THREE.BufferGeometry();
-emberGeo.setAttribute("position", new THREE.BufferAttribute(emberPos, 3));
-emberGeo.setAttribute("color", new THREE.BufferAttribute(emberCol, 3));
-const emberPts = new THREE.Points(
-  emberGeo,
-  new THREE.PointsMaterial({ size: 0.35, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false })
-);
+// Embers gold
+const MAX_E = 2000;
+const ePos = new Float32Array(MAX_E * 3);
+const eCol = new Float32Array(MAX_E * 3);
+const eGeo = new THREE.BufferGeometry();
+eGeo.setAttribute("position", new THREE.BufferAttribute(ePos, 3));
+eGeo.setAttribute("color", new THREE.BufferAttribute(eCol, 3));
+const emberPts = new THREE.Points(eGeo, new THREE.PointsMaterial({
+  size: 0.4, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false,
+}));
 scene.add(emberPts);
 
-// Fuel patches (boxes)
-const fuelGroup = new THREE.Group();
-scene.add(fuelGroup);
-/** @type {{ mesh: THREE.Mesh, up: boolean, e: number, ig: boolean, x: number, z: number, w: number, d: number }[]} */
+// Fuels
+const fuelG = new THREE.Group();
+scene.add(fuelG);
 let fuels = [];
-
 function rebuildFuels() {
-  while (fuelGroup.children.length) {
-    const c = fuelGroup.children[0];
-    fuelGroup.remove(c);
+  while (fuelG.children.length) {
+    const c = fuelG.children[0];
+    fuelG.remove(c);
     c.geometry?.dispose?.();
   }
   fuels = [];
-  const mk = (x, z, w, d, up, lab) => {
+  const add = (x, z, w, d, up) => {
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, 0.9, d),
-      new THREE.MeshStandardMaterial({
-        color: up ? 0x3d6b3a : 0x5a4a32,
-        roughness: 0.9,
-        emissive: 0x000000,
-      })
+      new THREE.BoxGeometry(w, 0.85, d),
+      new THREE.MeshStandardMaterial({ color: up ? 0x3f7a3a : 0x6b5a40, roughness: 0.9 })
     );
-    mesh.position.set(x + w * 0.5, 0.45, z + d * 0.5);
-    fuelGroup.add(mesh);
-    fuels.push({ mesh, up, e: 0, ig: false, x, z, w, d, lab });
+    mesh.position.set(x + w / 2, 0.42, z + d / 2);
+    fuelG.add(mesh);
+    fuels.push({ mesh, x, z, w, d, up, e: 0, ig: false });
   };
-  for (let i = 0; i < 4; i++) mk(-8 - i * 4.5, -1.5, 3.5, 3, true, i === 0 ? "upwind" : "");
-  for (let i = 0; i < 3; i++) mk(6 + i * 5.5, -2, 4.5, 3.5, false, i === 0 ? "downwind" : "");
-  mk(-14, 4, 1.8, 1.8, true, "tree");
-  // tree trunk height
-  const tree = fuels[fuels.length - 1];
-  tree.mesh.geometry.dispose();
-  tree.mesh.geometry = new THREE.CylinderGeometry(0.7, 0.9, 6, 10);
-  tree.mesh.position.y = 3;
-  tree.mesh.material.color.setHex(0x4a3728);
+  for (let i = 0; i < 4; i++) add(-9 - i * 4.2, -1.2, 3.2, 2.8, true);
+  for (let i = 0; i < 3; i++) add(7 + i * 5, -1.5, 4, 3, false);
 }
-
 rebuildFuels();
 
-// Fire marker
-const fireMark = new THREE.Mesh(
-  new THREE.CylinderGeometry(1.2, 1.6, 0.4, 16),
-  new THREE.MeshBasicMaterial({ color: 0xef4444 })
+// Fire marker (clear orange)
+const fireCore = new THREE.Mesh(
+  new THREE.SphereGeometry(1.4, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.9 })
 );
-fireMark.position.set(0, 0.2, 0);
-scene.add(fireMark);
-const fireLight = new THREE.PointLight(0xff6a00, 2.5, 40, 2);
+fireCore.position.set(0, 1.2, 0);
+scene.add(fireCore);
+const fireLight = new THREE.PointLight(0xff5500, 3, 50, 2);
 fireLight.position.set(0, 3, 0);
 scene.add(fireLight);
 
-// --- Embers state ---
+// -------------------------------------------------------------------------
+// Embers
+// -------------------------------------------------------------------------
 const embers = [];
-let emitAcc = 0;
-let tSim = 0;
 const stats = { lofted: 0, land: 0, revLand: 0, upwindIg: 0 };
-
-const ui = {
-  diam: 4.5, rate: 14, life: 10, moisture: 0.45,
-  showTemp: true, showRev: true, showVec: true, pause: false,
-};
+const ui = { diam: 4, rate: 12, life: 10, moisture: 0.4, pause: false };
 
 function spawnEmber() {
   const d = ui.diam * 1e-3;
-  const rho = 300;
-  const m = rho * (Math.PI / 6) * d ** 3;
+  const m = 300 * (Math.PI / 6) * d ** 3;
   const A = Math.PI * d * d / 4;
   const x = (Math.random() - 0.5) * fluid.params.fireW;
   const z = (Math.random() - 0.5) * fluid.params.fireW;
-  const y = 0.6 + Math.random() * 1.2;
+  const y = 0.7 + Math.random();
   const s = fluid.sample(x, y, z);
   embers.push({
     x, y, z,
     vx: s.u + (Math.random() - 0.5),
     vy: Math.max(s.v, 0) + 2 + Math.random() * fluid.params.Q,
     vz: s.w + (Math.random() - 0.5),
-    m, A, d,
-    life: ui.life * (0.75 + Math.random() * 0.4),
-    glowing: true,
+    m, A, life: ui.life * (0.7 + Math.random() * 0.5), glowing: true,
   });
   stats.lofted++;
-  if (embers.length > MAX_E) embers.splice(0, embers.length - MAX_E);
+  if (embers.length > MAX_E) embers.shift();
 }
 
 function stepEmbers(dt) {
-  const rhoAir = 1.15, Cd = 0.9, g = 9.81;
+  const g = 9.81, rho = 1.15, Cd = 0.9;
   for (let i = embers.length - 1; i >= 0; i--) {
     const e = embers[i];
     e.life -= dt;
@@ -370,28 +393,23 @@ function stepEmbers(dt) {
     const s = fluid.sample(e.x, e.y, e.z);
     const rx = s.u - e.vx, ry = s.v - e.vy, rz = s.w - e.vz;
     const rel = Math.hypot(rx, ry, rz) + 1e-6;
-    const k = 0.5 * rhoAir * Cd * e.A * rel;
-    e.vx += ((k * rx) / e.m) * dt;
-    e.vy += ((k * ry) / e.m - g + (e.glowing ? 0.35 * s.T : 0)) * dt;
-    e.vz += ((k * rz) / e.m) * dt;
-    e.x += e.vx * dt;
-    e.y += e.vy * dt;
-    e.z += e.vz * dt;
-
+    const k = 0.5 * rho * Cd * e.A * rel;
+    e.vx += (k * rx / e.m) * dt;
+    e.vy += (k * ry / e.m - g + (e.glowing ? 0.3 * s.T : 0)) * dt;
+    e.vz += (k * rz / e.m) * dt;
+    e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt;
     if (e.y <= 0.1) {
-      e.y = 0.1;
       stats.land++;
       if (s.u < -0.05) stats.revLand++;
       for (const f of fuels) {
         if (f.ig) continue;
         if (e.x >= f.x && e.x <= f.x + f.w && e.z >= f.z && e.z <= f.z + f.d) {
-          const heat = e.glowing ? 0.7 * (0.4 + 0.6 * (e.life / ui.life)) : 0.04;
-          f.e += heat * (5 / Math.max(ui.diam, 1));
+          f.e += (e.glowing ? 0.75 : 0.05) * (5 / Math.max(ui.diam, 1));
           if (f.e >= ui.moisture) {
             f.ig = true;
             f.mesh.material.color.setHex(0xdc2626);
-            f.mesh.material.emissive = new THREE.Color(0x7c2d12);
-            f.mesh.material.emissiveIntensity = 0.6;
+            f.mesh.material.emissive = new THREE.Color(0x9a3412);
+            f.mesh.material.emissiveIntensity = 0.7;
             if (f.up) stats.upwindIg++;
           }
         }
@@ -399,153 +417,221 @@ function stepEmbers(dt) {
       embers.splice(i, 1);
       continue;
     }
-    if (
-      e.x < fluid.x0 - 2 || e.x > fluid.x0 + fluid.Lx + 2 ||
-      e.z < fluid.z0 - 2 || e.z > fluid.z0 + fluid.Lz + 2 ||
-      e.y > fluid.Ly + 2
-    ) {
-      embers.splice(i, 1);
-    }
+    if (e.y > fluid.Ly + 2 || e.x < fluid.x0 - 3 || e.x > fluid.x0 + fluid.Lx + 3) embers.splice(i, 1);
   }
 }
 
-// --- Visualization update from fluid ---
-const _m4 = new THREE.Matrix4();
-const _v3 = new THREE.Vector3();
-const _q = new THREE.Quaternion();
-const _s = new THREE.Vector3(1, 1, 1);
+// -------------------------------------------------------------------------
+// Update 3D viz — orange heat only
+// -------------------------------------------------------------------------
 const _y = new THREE.Vector3(0, 1, 0);
+const _d = new THREE.Vector3();
 
-function updateTempCloud() {
-  const { nx, ny, nz } = fluid;
+function updateHeat() {
   let tMax = 1e-3;
   for (let n = 0; n < fluid.N; n++) if (fluid.T[n] > tMax) tMax = fluid.T[n];
   let p = 0;
-  // subsample for performance
-  const step = 1;
-  for (let k = 0; k < nz; k += step) {
-    for (let j = 0; j < ny; j += step) {
-      for (let i = 0; i < nx; i += step) {
+  const { nx, ny, nz } = fluid;
+  for (let k = 0; k < nz; k += STEP) {
+    for (let j = 0; j < ny; j += STEP) {
+      for (let i = 0; i < nx; i += STEP) {
         const id = fluid.I(i, j, k);
         const t = fluid.T[id] / tMax;
-        if (t < 0.04) {
-          // still write transparent-ish by pushing below / skip density: write low alpha via dark color far
-          tempPos[p * 3] = fluid.worldX(i);
-          tempPos[p * 3 + 1] = fluid.worldY(j);
-          tempPos[p * 3 + 2] = fluid.worldZ(k);
-          tempCol[p * 3] = 0.05;
-          tempCol[p * 3 + 1] = 0.05;
-          tempCol[p * 3 + 2] = 0.08;
+        if (t < 0.06) {
+          tPos[p * 3 + 1] = -50;
           p++;
           continue;
         }
-        tempPos[p * 3] = fluid.worldX(i);
-        tempPos[p * 3 + 1] = fluid.worldY(j);
-        tempPos[p * 3 + 2] = fluid.worldZ(k);
-        // blackbody-ish
-        tempCol[p * 3] = Math.min(1, 0.2 + 1.2 * t);
-        tempCol[p * 3 + 1] = Math.min(1, 0.1 + 0.55 * t);
-        tempCol[p * 3 + 2] = Math.min(1, 0.05 + 0.15 * (1 - t));
+        tPos[p * 3] = fluid.worldX(i);
+        tPos[p * 3 + 1] = fluid.worldY(j);
+        tPos[p * 3 + 2] = fluid.worldZ(k);
+        // orange → yellow → white-hot (NO blue)
+        tCol[p * 3] = Math.min(1, 0.55 + 0.5 * t);
+        tCol[p * 3 + 1] = Math.min(1, 0.15 + 0.55 * t);
+        tCol[p * 3 + 2] = Math.min(1, 0.02 + 0.08 * t);
         p++;
       }
     }
   }
-  // zero rest
-  for (let i = p; i < nProbe; i++) {
-    tempPos[i * 3 + 1] = -100;
-  }
-  tempGeo.attributes.position.needsUpdate = true;
-  tempGeo.attributes.color.needsUpdate = true;
-  tempGeo.computeBoundingSphere();
-  tempPts.visible = ui.showTemp;
-  tempPts.material.opacity = 0.5;
+  for (let i = p; i < nVis; i++) tPos[i * 3 + 1] = -50;
+  tGeo.attributes.position.needsUpdate = true;
+  tGeo.attributes.color.needsUpdate = true;
 }
 
-function updateReverseMarkers() {
-  if (!ui.showRev) {
-    revMesh.count = 0;
-    return;
-  }
-  const { nx, ny, nz } = fluid;
+function updateReverse() {
   let c = 0;
+  const { nx, ny, nz } = fluid;
   const jMax = Math.min(5, ny - 1);
-  for (let k = 1; k < nz - 1; k += 1) {
+  for (let k = 2; k < nz - 2; k += 2) {
     for (let j = 1; j < jMax; j++) {
-      for (let i = 1; i < nx - 1; i += 1) {
+      for (let i = 2; i < nx - 2; i += 2) {
+        if (c >= MAX_REV) break;
         const id = fluid.I(i, j, k);
-        if (fluid.u[id] < -0.05) {
-          _v3.set(fluid.worldX(i), fluid.worldY(j), fluid.worldZ(k));
-          _q.set(0, 0, 0, 1);
-          _m4.compose(_v3, _q, _s);
-          revMesh.setMatrixAt(c++, _m4);
-          if (c >= MAX_REV) break;
-        }
-      }
-    }
-  }
-  revMesh.count = c;
-  revMesh.instanceMatrix.needsUpdate = true;
-}
-
-function updateVectors() {
-  if (!ui.showVec) {
-    vecPool.forEach((m) => { m.visible = false; });
-    return;
-  }
-  const { nx, ny, nz } = fluid;
-  let c = 0;
-  for (let k = 2; k < nz - 2; k += 4) {
-    for (let j = 1; j < ny - 2; j += 3) {
-      for (let i = 2; i < nx - 2; i += 4) {
-        if (c >= MAX_VEC) break;
-        const id = fluid.I(i, j, k);
-        const uu = fluid.u[id], vv = fluid.v[id], ww = fluid.w[id];
-        const sp = Math.hypot(uu, vv, ww);
-        if (sp < 0.15) { vecPool[c].visible = false; c++; continue; }
-        const m = vecPool[c];
+        const uu = fluid.u[id];
+        if (uu >= -0.06) { revPool[c].visible = false; c++; continue; }
+        const m = revPool[c];
         m.visible = true;
         m.position.set(fluid.worldX(i), fluid.worldY(j), fluid.worldZ(k));
-        const dir = _v3.set(uu, vv, ww).normalize();
-        m.quaternion.setFromUnitVectors(_y, dir);
-        m.scale.setScalar(0.6 + 0.4 * Math.min(1, sp / 4));
-        m.material.color.setHex(uu < -0.05 ? 0x38bdf8 : 0xa78bfa);
+        // Point against free stream (negative x)
+        _d.set(-1, 0, 0);
+        m.quaternion.setFromUnitVectors(_y, _d);
+        m.scale.setScalar(0.9);
         c++;
       }
     }
   }
-  for (; c < MAX_VEC; c++) vecPool[c].visible = false;
+  for (; c < MAX_REV; c++) revPool[c].visible = false;
 }
 
 function updateEmberPts() {
   const n = Math.min(embers.length, MAX_E);
   for (let i = 0; i < n; i++) {
     const e = embers[i];
-    emberPos[i * 3] = e.x;
-    emberPos[i * 3 + 1] = e.y;
-    emberPos[i * 3 + 2] = e.z;
-    if (e.glowing) {
-      emberCol[i * 3] = 1; emberCol[i * 3 + 1] = 0.75; emberCol[i * 3 + 2] = 0.2;
-    } else {
-      emberCol[i * 3] = 0.4; emberCol[i * 3 + 1] = 0.4; emberCol[i * 3 + 2] = 0.4;
+    ePos[i * 3] = e.x; ePos[i * 3 + 1] = e.y; ePos[i * 3 + 2] = e.z;
+    if (e.glowing) { eCol[i * 3] = 1; eCol[i * 3 + 1] = 0.8; eCol[i * 3 + 2] = 0.15; }
+    else { eCol[i * 3] = 0.45; eCol[i * 3 + 1] = 0.42; eCol[i * 3 + 2] = 0.4; }
+  }
+  for (let i = n; i < MAX_E; i++) ePos[i * 3 + 1] = -40;
+  eGeo.attributes.position.needsUpdate = true;
+  eGeo.attributes.color.needsUpdate = true;
+  eGeo.setDrawRange(0, n);
+}
+
+// -------------------------------------------------------------------------
+// SIDE VIEW (2D cut) — the readable story
+// -------------------------------------------------------------------------
+const c2 = document.getElementById("c2");
+const ctx2 = c2.getContext("2d");
+
+function resizeAll() {
+  const v = document.getElementById("view");
+  const cut = document.getElementById("cut");
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  renderer.setSize(v.clientWidth, v.clientHeight, false);
+  camera.aspect = v.clientWidth / Math.max(1, v.clientHeight);
+  camera.updateProjectionMatrix();
+  c2.width = Math.floor(cut.clientWidth * dpr);
+  c2.height = Math.floor(cut.clientHeight * dpr);
+  ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resizeAll);
+resizeAll();
+
+function drawSideView() {
+  const W = c2.clientWidth, H = c2.clientHeight;
+  if (W < 10 || H < 10) return;
+  // background
+  const g = ctx2.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#141820");
+  g.addColorStop(1, "#0a0c10");
+  ctx2.fillStyle = g;
+  ctx2.fillRect(0, 0, W, H);
+
+  const x0 = fluid.x0, Lx = fluid.Lx, Ly = fluid.Ly;
+  const pad = 28;
+  const toX = (x) => pad + ((x - x0) / Lx) * (W - 2 * pad);
+  const toY = (y) => H - pad - (y / Ly) * (H - 2 * pad - 10);
+
+  // ground
+  ctx2.fillStyle = "#1a2218";
+  ctx2.fillRect(0, toY(0), W, H - toY(0));
+
+  // free-stream label
+  ctx2.strokeStyle = "rgba(196,181,253,0.9)";
+  ctx2.lineWidth = 2;
+  ctx2.beginPath();
+  ctx2.moveTo(pad, 22);
+  ctx2.lineTo(pad + 80, 22);
+  ctx2.stroke();
+  ctx2.fillStyle = "#c4b5fd";
+  ctx2.font = "600 11px JetBrains Mono, monospace";
+  ctx2.fillText("WIND →", pad + 88, 26);
+
+  // Temperature + velocity on z=0 plane (nearest k)
+  const kMid = Math.floor(fluid.nz / 2);
+  let tMax = 1e-3;
+  for (let j = 0; j < fluid.ny; j++) {
+    for (let i = 0; i < fluid.nx; i++) {
+      const t = fluid.T[fluid.I(i, j, kMid)];
+      if (t > tMax) tMax = t;
     }
   }
-  for (let i = n; i < MAX_E; i++) emberPos[i * 3 + 1] = -50;
-  emberGeo.attributes.position.needsUpdate = true;
-  emberGeo.attributes.color.needsUpdate = true;
-  emberGeo.setDrawRange(0, n);
+
+  // heat cells as orange quads
+  for (let j = 0; j < fluid.ny; j++) {
+    for (let i = 0; i < fluid.nx; i++) {
+      const t = fluid.T[fluid.I(i, j, kMid)] / tMax;
+      if (t < 0.05) continue;
+      const x = fluid.worldX(i), y = fluid.worldY(j);
+      const sx = toX(x - fluid.dx * 0.5);
+      const sy = toY(y + fluid.dy * 0.5);
+      const sw = Math.ceil((fluid.dx / Lx) * (W - 2 * pad)) + 1;
+      const sh = Math.ceil((fluid.dy / Ly) * (H - 2 * pad - 10)) + 1;
+      const r = Math.floor(80 + 175 * t);
+      const g2 = Math.floor(20 + 100 * t);
+      const b = Math.floor(5 + 20 * t);
+      ctx2.fillStyle = `rgba(${r},${g2},${b},${0.25 + 0.65 * t})`;
+      ctx2.fillRect(sx, sy, sw, sh);
+    }
+  }
+
+  // velocity arrows on cut
+  for (let j = 1; j < fluid.ny - 1; j += 2) {
+    for (let i = 2; i < fluid.nx - 2; i += 3) {
+      const id = fluid.I(i, j, kMid);
+      const uu = fluid.u[id], vv = fluid.v[id];
+      const sp = Math.hypot(uu, vv);
+      if (sp < 0.12) continue;
+      const x = fluid.worldX(i), y = fluid.worldY(j);
+      const sc = 0.55;
+      const x2 = x + uu * sc, y2 = y + vv * sc;
+      const rev = uu < -0.06;
+      ctx2.strokeStyle = rev ? "rgba(232,121,249,0.95)" : "rgba(196,181,253,0.55)";
+      ctx2.lineWidth = rev ? 2 : 1;
+      ctx2.beginPath();
+      ctx2.moveTo(toX(x), toY(y));
+      ctx2.lineTo(toX(x2), toY(y2));
+      ctx2.stroke();
+    }
+  }
+
+  // reverse ground band label
+  let hasRev = false;
+  for (let i = 1; i < fluid.nx - 1; i++) {
+    if (fluid.u[fluid.I(i, 1, kMid)] < -0.06) { hasRev = true; break; }
+  }
+  ctx2.fillStyle = hasRev ? "#e879f9" : "#6b7280";
+  ctx2.font = "600 11px JetBrains Mono, monospace";
+  ctx2.fillText(
+    hasRev ? "MAGENTA = reverse ground flow (against free-stream)" : "No reverse flow yet — wait, or use Strong wind + strong fire",
+    pad, H - 10
+  );
+
+  // embers on cut (near z≈0)
+  for (const e of embers) {
+    if (Math.abs(e.z) > 3) continue;
+    ctx2.fillStyle = e.glowing ? "#fbbf24" : "#78716c";
+    ctx2.beginPath();
+    ctx2.arc(toX(e.x), toY(e.y), 3, 0, Math.PI * 2);
+    ctx2.fill();
+  }
+
+  // fuels on cut
+  for (const f of fuels) {
+    if (Math.abs(f.z + f.d / 2) > 4) continue;
+    ctx2.fillStyle = f.ig ? "#ef4444" : (f.up ? "rgba(74,222,128,0.75)" : "rgba(120,100,70,0.7)");
+    const x0 = toX(f.x), x1 = toX(f.x + f.w);
+    ctx2.fillRect(x0, toY(0.9), x1 - x0, toY(0) - toY(0.9));
+  }
+
+  ctx2.fillStyle = "#fb923c";
+  ctx2.font = "700 11px JetBrains Mono, monospace";
+  ctx2.fillText("FIRE", toX(-1.5), toY(0) + 14);
 }
 
-function resize() {
-  const el = document.getElementById("view");
-  const w = el.clientWidth, h = el.clientHeight;
-  camera.aspect = w / Math.max(1, h);
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h, false);
-}
-window.addEventListener("resize", resize);
-resize();
-
-// --- UI ---
+// -------------------------------------------------------------------------
+// UI
+// -------------------------------------------------------------------------
 function bind(id, apply, fmt) {
   const el = document.getElementById(id);
   const lab = document.getElementById(id + "Val");
@@ -557,38 +643,31 @@ function bind(id, apply, fmt) {
   el.addEventListener("input", go);
   go();
 }
-bind("wind", (v) => { fluid.params.wind = v; }, (v) => v.toFixed(2));
+bind("wind", (v) => { fluid.params.wind = v; }, (v) => v.toFixed(1) + " m/s");
 bind("Q", (v) => { fluid.params.Q = v; }, (v) => v.toFixed(2));
-bind("fireW", (v) => { fluid.params.fireW = v; }, (v) => v.toFixed(1));
-bind("nu", (v) => { fluid.params.nu = v; }, (v) => v.toFixed(3));
-bind("kappa", (v) => { fluid.params.kappa = v; }, (v) => v.toFixed(3));
-bind("buoy", (v) => { fluid.params.buoy = v; }, (v) => v.toFixed(1));
+bind("nu", (v) => { fluid.params.nu = v; fluid.params.kappa = v * 1.4; }, (v) => v.toFixed(3));
+bind("buoy", (v) => { fluid.params.buoy = v; }, (v) => String(v));
 bind("diam", (v) => { ui.diam = v; }, (v) => v.toFixed(1));
 bind("rate", (v) => { ui.rate = v; }, (v) => String(Math.round(v)));
-bind("life", (v) => { ui.life = v; }, (v) => v.toFixed(1));
+bind("life", (v) => { ui.life = v; }, (v) => String(v));
 bind("moisture", (v) => { ui.moisture = v; }, (v) => v.toFixed(2));
+document.getElementById("pause").addEventListener("change", (e) => { ui.pause = e.target.checked; });
 
-["showTemp", "showRev", "showVec", "pause"].forEach((id) => {
-  const el = document.getElementById(id);
-  const key = id;
-  el.addEventListener("change", () => { ui[key] = el.checked; });
-  ui[key] = el.checked;
-});
-
-document.getElementById("btnReset").onclick = () => {
+function resetAll() {
   fluid.reset();
-  for (let i = 0; i < 40; i++) fluid.step(0.025);
+  for (let i = 0; i < 55; i++) fluid.step(0.022);
   embers.length = 0;
   emitAcc = 0;
   tSim = 0;
   stats.lofted = stats.land = stats.revLand = stats.upwindIg = 0;
   rebuildFuels();
-};
+}
+document.getElementById("btnReset").onclick = resetAll;
 
 const presets = {
-  demo: { wind: 1.4, Q: 3.2, fireW: 2.4, nu: 0.07, kappa: 0.09, buoy: 9.5, diam: 4.5, rate: 14, life: 10, moisture: 0.45 },
-  windy: { wind: 4.5, Q: 2.5, fireW: 2.0, nu: 0.06, kappa: 0.08, buoy: 7, diam: 4, rate: 16, life: 7, moisture: 0.6 },
-  hot: { wind: 0.8, Q: 4.5, fireW: 3.0, nu: 0.06, kappa: 0.1, buoy: 12, diam: 5, rate: 12, life: 11, moisture: 0.35 },
+  storm: { wind: 2.8, Q: 3.8, nu: 0.055, buoy: 11, diam: 4, rate: 12, life: 10, moisture: 0.4 },
+  calm: { wind: 0.6, Q: 2.0, nu: 0.08, buoy: 7, diam: 4, rate: 10, life: 9, moisture: 0.5 },
+  windyOnly: { wind: 5.5, Q: 1.2, nu: 0.07, buoy: 5, diam: 4, rate: 12, life: 6, moisture: 0.7 },
 };
 document.getElementById("presets").onclick = (e) => {
   const b = e.target.closest("button[data-p]");
@@ -597,36 +676,37 @@ document.getElementById("presets").onclick = (e) => {
   const p = presets[b.dataset.p];
   fluid.params.wind = p.wind;
   fluid.params.Q = p.Q;
-  fluid.params.fireW = p.fireW;
   fluid.params.nu = p.nu;
-  fluid.params.kappa = p.kappa;
+  fluid.params.kappa = p.nu * 1.4;
   fluid.params.buoy = p.buoy;
   ui.diam = p.diam; ui.rate = p.rate; ui.life = p.life; ui.moisture = p.moisture;
-  for (const [id, val] of [
-    ["wind", p.wind], ["Q", p.Q], ["fireW", p.fireW], ["nu", p.nu], ["kappa", p.kappa],
-    ["buoy", p.buoy], ["diam", p.diam], ["rate", p.rate], ["life", p.life], ["moisture", p.moisture],
-  ]) {
+  for (const [id, val] of Object.entries({
+    wind: p.wind, Q: p.Q, nu: p.nu, buoy: p.buoy, diam: p.diam, rate: p.rate, life: p.life, moisture: p.moisture,
+  })) {
     const el = document.getElementById(id);
-    el.value = val;
-    el.dispatchEvent(new Event("input"));
+    if (el) { el.value = val; el.dispatchEvent(new Event("input")); }
   }
-  document.getElementById("btnReset").click();
+  resetAll();
 };
 
 function updateMeta() {
   const rs = fluid.reverseStats();
   const el = document.getElementById("meta");
   const ok = stats.upwindIg > 0;
+  const hasRev = rs.nRev > 5;
   el.innerHTML =
-    `t=<b>${tSim.toFixed(1)}s</b> · grid <b>${fluid.nx}×${fluid.ny}×${fluid.nz}</b> · <span class="cool">3D NS</span>` +
-    `<br>u<sub>min</sub>=<b class="cool">${rs.umin.toFixed(2)}</b> m/s · reverse cells <b>${rs.nRev}</b>` +
-    `<br>embers loft <b>${stats.lofted}</b> · land <b>${stats.land}</b> · rev land <b class="cool">${stats.revLand}</b>` +
+    `time <b>${tSim.toFixed(0)}s</b> · 3D grid <b>${fluid.nx}×${fluid.ny}×${fluid.nz}</b><br>` +
+    `strongest reverse wind: <b class="rev">${rs.umin.toFixed(2)} m/s</b> ` +
+    (hasRev ? `<span class="rev">(reverse cells active)</span>` : `<span class="wind">(no reverse yet — wait or use storm preset)</span>`) +
+    `<br>embers lofted <b>${stats.lofted}</b> · landed <b>${stats.land}</b> · landed in reverse <b class="rev">${stats.revLand}</b>` +
     `<br>upwind ignitions: <b class="${ok ? "ok" : "hot"}">${stats.upwindIg}</b>` +
-    (ok ? ` · <span class="ok">counter-wind spotting</span>` : "");
+    (ok ? ` · <span class="ok">ember lit fuel against free-stream wind</span>` : "");
 }
 
-// --- Main loop ---
+// Main loop
 const clock = new THREE.Clock();
+let emitAcc = 0;
+let tSim = 0;
 let lastMeta = 0;
 
 function frame() {
@@ -634,29 +714,35 @@ function frame() {
   const dt = Math.min(0.04, clock.getDelta());
   if (!ui.pause) {
     tSim += dt;
-    // Multiple NS substeps for stability
-    const sub = 2;
-    for (let s = 0; s < sub; s++) fluid.step(dt / sub);
+    for (let s = 0; s < 2; s++) fluid.step(dt / 2);
     emitAcc += ui.rate * dt;
     while (emitAcc >= 1) { spawnEmber(); emitAcc -= 1; }
     stepEmbers(dt);
   }
-  updateTempCloud();
-  updateReverseMarkers();
-  updateVectors();
+  updateHeat();
+  updateReverse();
   updateEmberPts();
-  fireLight.intensity = 1.5 + 1.2 * fluid.params.Q;
+  fireLight.intensity = 2 + fluid.params.Q;
+  fireCore.scale.setScalar(0.9 + 0.15 * fluid.params.Q);
   controls.update();
   renderer.render(scene, camera);
-  if (performance.now() - lastMeta > 250) {
+  drawSideView();
+  if (performance.now() - lastMeta > 300) {
     updateMeta();
     lastMeta = performance.now();
   }
 }
 
+// Apply storm defaults to sliders
+document.getElementById("wind").value = 2.8;
+document.getElementById("Q").value = 3.8;
+document.getElementById("nu").value = 0.055;
+document.getElementById("buoy").value = 11;
+["wind", "Q", "nu", "buoy"].forEach((id) => document.getElementById(id).dispatchEvent(new Event("input")));
+
 rebuildFuels();
 frame();
-console.log(BUILD, "3D Boussinesq NS", fluid.nx, fluid.ny, fluid.nz);
+console.log(BUILD, "readable 3D NS ember counterflow");
 </script>
 </body>
 </html>
