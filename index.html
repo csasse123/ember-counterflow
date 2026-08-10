@@ -94,7 +94,7 @@
         <b style="color:#fde047">yellow</b> = retro firebrands (\(v_x&lt;0\)).
       </p>
     </div>
-    <div class="build" id="build">v5.0.0</div>
+    <div class="build" id="build">v5.0.1</div>
   </div>
   <div id="cut">
     <div class="cut-tag">PRIMARY · side cut of 3D NS · yellow/magenta trails = reverse-going firebrands</div>
@@ -165,7 +165,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Fluid3D } from "./solver3d.js";
 
-const BUILD = "v5.0.0";
+const BUILD = "v5.0.1";
 document.getElementById("build").textContent = BUILD;
 
 // =============================================================================
@@ -351,19 +351,25 @@ function spawnEmber(opts = {}) {
   const rho = heavy ? (450 + Math.random() * 250) : (180 + Math.random() * 120);
   const m = rho * (Math.PI / 6) * d ** 3;
   const A = Math.PI * d * d / 4;
-  const x = opts.x ?? (Math.random() - 0.5) * 1.5;
+  // Light: start a bit downwind/high so free-stream can carry them before reverse
+  // Heavy: start in the fire core and fall into reverse (rare retro path)
+  const x = opts.x ?? (heavy
+    ? (Math.random() - 0.5) * 1.2
+    : 0.5 + Math.random() * 2.5);
   const z = opts.z ?? (Math.random() - 0.5) * 1.5;
-  const y = opts.y ?? (0.5 + Math.random() * 1.6);
+  const y = opts.y ?? (heavy
+    ? (0.6 + Math.random() * 1.2)
+    : (2.0 + Math.random() * 2.5));
   const U = fluid.params.wind;
   const s = fluid.sample(x, y, z);
-  // Light brands: loft high into free-stream (standard spotting path).
-  // Heavy brands: lower loft → more chance to sample reverse near ground (rare retro).
   const e = {
     x, y, z,
-    vx: Math.max(U * 0.5, s.u > 0 ? s.u * 0.5 : U * 0.4) + Math.random() * 0.8,
+    vx: heavy
+      ? (0.5 + Math.random() * 1.5)
+      : (U * (1.0 + Math.random() * 0.8) + Math.max(0, s.u) * 0.3),
     vy: heavy
-      ? (1.2 + Math.random() * 2.5)
-      : (4.0 + Math.random() * 5.0 + Math.max(0, s.v) * 0.25),
+      ? (1.0 + Math.random() * 2.2)
+      : (2.5 + Math.random() * 3.5),
     vz: (Math.random() - 0.5) * 0.8,
     m, A, d, rho, heavy,
     // Langevin state for subgrid u'
